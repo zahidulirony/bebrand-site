@@ -1,0 +1,4 @@
+# Keep the Git folder that comes with the deploy out of reach.
+<IfModule mod_alias.c>
+RedirectMatch 404 /\.git
+</IfModule>
