@@ -57,13 +57,13 @@
 #bb-reviews.bb-live>.bb-on{min-height:537px}
 #bb-reviews.bb-live>:not(.bb-on){min-height:360px;justify-content:flex-end}
 /* the place for a client photo or video: a tinted panel until an Image or Video element is put into the card */
-#bb-reviews.bb-live>.bb-on:not(:has(img,video))::before{content:"";flex:1 1 200px;min-height:200px;margin-bottom:8px;border-radius:18px;background:linear-gradient(150deg,#CFE4FB,#EAF3FE)}
+#bb-reviews.bb-live>.bb-on:not(:has(img,video))::before{content:"";flex:0 0 auto;height:clamp(200px,19vw,274px);margin-bottom:8px;border-radius:18px;background:linear-gradient(150deg,#CFE4FB,#EAF3FE)}
 #bb-reviews.bb-live>*{display:none;cursor:pointer;opacity:.62}
 #bb-reviews.bb-live>.bb-prev{display:flex;order:1}
 #bb-reviews.bb-live>.bb-on{display:flex;order:2;opacity:1;cursor:default;box-shadow:0 26px 64px rgba(15,111,230,.16);padding:clamp(24px,3vw,40px)!important}
 #bb-reviews.bb-live>.bb-next{display:flex;order:3}
 #bb-reviews.bb-live>.bb-on p:nth-child(2){font-size:clamp(19px,1.7vw,24px);line-height:1.45}
-@media (max-width:767px){#bb-reviews.bb-live>.bb-on{min-height:547px}#bb-reviews.bb-live{grid-template-columns:1fr!important}#bb-reviews.bb-live>.bb-prev,#bb-reviews.bb-live>.bb-next{display:none}}
+@media (max-width:767px){#bb-reviews.bb-live>.bb-on{min-height:547px;justify-content:flex-end}#bb-reviews.bb-live>.bb-on:not(:has(img,video))::before{height:330px}#bb-reviews.bb-live{grid-template-columns:1fr!important}#bb-reviews.bb-live>.bb-prev,#bb-reviews.bb-live>.bb-next{display:none}}
 
 /* comparison table: Yes, Sometimes and No as marks */
 .bb-motion .bb-mark{display:flex;justify-content:center;align-items:center;font-size:0!important;line-height:0!important;color:transparent!important}
@@ -130,7 +130,7 @@
 #faqs details:last-of-type{margin-bottom:0}
 @media (max-width:767px){#why [data-e-type="e-grid"]>*{min-height:71px}.bbx-tabs{margin-bottom:13px}#faqs details>summary{padding-top:13.8px;padding-bottom:13.8px}
 /* phones: the column names of the comparison table stand upright, as on the original, so five columns fit */
-#why .bb-cmp-head:not(:first-child){display:flex;align-items:center;justify-content:flex-start;min-height:200px;padding-inline:0;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap}}
+#why .bb-cmp-head:not(:first-child){display:flex;align-items:center;justify-content:flex-start;min-height:158px;padding-inline:0;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap}}
 
 /* pricing: the two switches in the banner */
 .bbx-hide{display:none!important}
