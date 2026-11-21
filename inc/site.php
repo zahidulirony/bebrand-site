@@ -449,6 +449,10 @@ function bebrand_site_page_html( $post_id ) {
 		);
 		$head     = str_replace( '<body>', '<body class="' . esc_attr( implode( ' ', $classes ) ) . '">', $head );
 		$wp_head .= '<style>.bebrand-el-preview .e-con,.bebrand-el-preview .e-con>.e-con-inner,.bebrand-el-preview .elementor-section,.bebrand-el-preview .elementor-container,.bebrand-el-preview .elementor-column,.bebrand-el-preview .elementor-widget-wrap{display:block!important;padding:0!important;margin:0!important;max-width:none!important;width:auto!important;gap:0!important}.bebrand-el-preview .elementor-widget-' . BEBRAND_SITE_WIDGET . '{margin:0!important;width:auto!important;max-width:none!important}</style>' . "\n";
+		// Elementor's boxes carry custom properties of their own (--display, --gap ...), which are inherited: the element's box
+		// states the design's own again so the page reads the same values as on the site.
+		$vars     = file_get_contents( $dir . 'editor-vars.css' );
+		$wp_head .= '<style>' . ( false === $vars ? '' : $vars ) . '</style>' . "\n";
 		$boot     = file_get_contents( $dir . 'boot.js' );
 		$tail     = '<script>' . "\n" . ( false === $boot ? '' : $boot ) . '</script>' . "\n" . '{{BB_FOOT}}</body>' . "\n" . '</html>' . "\n";
 	} else {
