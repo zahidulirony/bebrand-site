@@ -350,6 +350,29 @@ function bebrand_is_site_page() {
 	return is_page() && BEBRAND_SITE_TEMPLATE === get_page_template_slug( get_queried_object_id() );
 }
 
+/**
+ * The public page is built by the theme from the element's fields, so Elementor's own styles, fonts and scripts have nothing to
+ * work on there: they are left out, which keeps the page as light as the original. (Inside the editor they all stay.)
+ */
+function bebrand_site_drop_elementor_assets() {
+	if ( ! bebrand_is_site_page() || bebrand_site_in_editor() ) {
+		return;
+	}
+	$theirs = '/^(elementor|e-|widget-|swiper|font-awesome|fontawesome|base-desktop|base-mobile|base-tablet)/';
+	foreach ( wp_styles()->queue as $handle ) {
+		if ( preg_match( $theirs, $handle ) && false === strpos( $handle, 'admin-bar' ) ) {
+			wp_dequeue_style( $handle );
+		}
+	}
+	foreach ( wp_scripts()->queue as $handle ) {
+		if ( preg_match( $theirs, $handle ) && false === strpos( $handle, 'admin-bar' ) ) {
+			wp_dequeue_script( $handle );
+		}
+	}
+}
+add_action( 'wp_print_styles', 'bebrand_site_drop_elementor_assets', 100 );
+add_action( 'wp_print_footer_scripts', 'bebrand_site_drop_elementor_assets', 1 );
+
 /** The whole document for a page that uses the template. */
 function bebrand_site_page_html( $post_id ) {
 	$dir  = get_template_directory() . '/site/';

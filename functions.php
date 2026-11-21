@@ -9,7 +9,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'BEBRAND_VERSION', '1.2.0-f2a30041' );
+define( 'BEBRAND_VERSION', '1.2.0-13e56d26' );
 define( 'BEBRAND_LANDING', 'templates/landing.php' );
 define( 'BEBRAND_FONTS', 'https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400..700&family=Outfit:wght@400;500;600&display=swap' );
 
@@ -73,14 +73,6 @@ add_action(
 			// The landing page brings its whole design with it: WordPress's own block styles stay out of it.
 			foreach ( array( 'wp-block-library', 'wp-block-library-theme', 'classic-theme-styles', 'global-styles' ) as $handle ) {
 				wp_dequeue_style( $handle );
-			}
-			if ( bebrand_is_site_page() && ! bebrand_site_in_editor() ) {
-				// The public page is built by the theme from the element's fields: Elementor's own styles have nothing to style on it.
-				foreach ( wp_styles()->queue as $handle ) {
-					if ( preg_match( '/^(elementor|e-|widget-|swiper|font-awesome|fontawesome)/', $handle ) ) {
-						wp_dequeue_style( $handle );
-					}
-				}
 			}
 			return;
 		}
