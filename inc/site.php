@@ -415,6 +415,21 @@ function bebrand_site_copy_sitemap( $args, $type ) {
 }
 add_filter( 'wp_sitemaps_posts_query_args', 'bebrand_site_copy_sitemap', 10, 2 );
 
+/**
+ * Pages built from Elementor's own elements get the theme's motion layer (site/el-motion.css and .js): the live sky, the moving
+ * rows, the photo arch, the bars that follow the page, the rise into view. Content and styles stay in Elementor.
+ */
+function bebrand_motion_assets() {
+	if ( ! is_singular() || bebrand_is_landing() || 'builder' !== get_post_meta( get_queried_object_id(), '_elementor_edit_mode', true ) ) {
+		return;
+	}
+	$base = get_template_directory_uri() . '/site/';
+	wp_enqueue_style( 'bebrand-motion', $base . 'el-motion.css', array(), BEBRAND_VERSION );
+	wp_enqueue_script( 'bebrand-motion', $base . 'el-motion.js', array(), BEBRAND_VERSION, true );
+	wp_localize_script( 'bebrand-motion', 'bbMotion', array( 'base' => $base ) );
+}
+add_action( 'wp_enqueue_scripts', 'bebrand_motion_assets', 120 );
+
 /** The whole document for a page that uses the template. */
 function bebrand_site_page_html( $post_id ) {
 	$dir  = get_template_directory() . '/site/';

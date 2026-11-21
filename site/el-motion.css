@@ -1,0 +1,68 @@
+/* BeBrand: motion and finishing touches for pages built from Elementor's own elements.
+   Elementor holds the content, structure and styles; this file and el-motion.js add what its controls cannot: the live sky, the
+   moving rows, the photo arch, the bar that follows the page, and the way things rise into view. Elements are found by the ID set
+   on them in Elementor (Advanced > ID): top, bb-hero-copy, bb-nav, bb-ticker, bb-work-a, bb-work-b, bb-reviews, closing.
+   Rules under .bb-motion apply only once the script runs, and it does not run inside the editor, so editing stays still. */
+
+/* the highlighted words of the hero title (the <span> inside the heading) */
+#top h1 span{position:relative;display:inline-block;line-height:1.1;padding:0 .16em .04em;margin:0 .07em;background:rgba(255,255,255,.16);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.92);white-space:nowrap}
+#top h1 span::before,#top h1 span::after{content:"";position:absolute;width:.12em;height:.12em;border-radius:50%;background:#fff}
+#top h1 span::before{left:-.06em;bottom:-.06em}
+#top h1 span::after{right:-.06em;top:-.06em}
+
+/* live sky behind the hero */
+#top{position:relative}
+#top .sky{position:absolute;inset:0;width:100%;height:100%;display:block;opacity:0;transition:opacity .8s ease;pointer-events:none;z-index:0}
+#top.live .sky{opacity:1}
+.bb-motion #top>*:not(.sky):not(#bb-nav){position:relative;z-index:1}
+
+/* the bar at the top follows the page; past the hero it gives way to the quick bar at the bottom */
+.bb-motion #bb-nav{position:fixed;top:10px;left:50%;z-index:60;width:min(1152px,calc(100% - 28px));transform:translateX(-50%);padding:8px 10px 8px 18px;border-radius:999px;transition:background-color .3s ease,box-shadow .3s ease,transform .38s ease}
+.bb-motion #top{padding-top:84px}
+.bb-scrolled #bb-nav{background-color:rgba(255,255,255,.9);-webkit-backdrop-filter:saturate(1.4) blur(14px);backdrop-filter:saturate(1.4) blur(14px);box-shadow:0 8px 30px rgba(16,20,24,.1)}
+.bb-scrolled #bb-nav nav{background-color:rgba(15,111,230,.07)}
+.bb-scrolled #bb-nav nav a{color:#101418}
+.bb-scrolled #bb-nav nav a:hover{background-color:rgba(15,111,230,.1)}
+.bb-scrolled #bb-nav img{filter:brightness(0) saturate(100%) invert(30%) sepia(93%) saturate(2476%) hue-rotate(203deg) brightness(96%) contrast(93%)}
+.bb-scrolled #bb-nav>a:last-child{background-color:#0F6FE6;color:#fff}
+.bb-away #bb-nav{transform:translate(-50%,-160%)}
+
+#bb-dock{position:fixed;left:50%;bottom:18px;z-index:60;display:flex;align-items:center;gap:4px;padding:6px 6px 6px 10px;border-radius:999px;background:rgba(16,20,24,.88);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:0 14px 40px rgba(16,20,24,.25);font:500 14px/1 "DM Sans",ui-sans-serif,system-ui,sans-serif;white-space:nowrap;transform:translate(-50%,calc(100% + 30px));opacity:0;visibility:hidden;transition:transform .32s ease,opacity .25s ease,visibility 0s .32s}
+#bb-dock.bb-show{transform:translate(-50%,0);opacity:1;visibility:visible;transition:transform .32s ease,opacity .25s ease,visibility 0s}
+#bb-dock a{color:#fff;text-decoration:none;padding:10px 12px;border-radius:999px;transition:background-color .2s ease}
+#bb-dock a:hover{background:rgba(255,255,255,.12)}
+#bb-dock a.bb-go{margin-left:6px;padding:11px 18px;background:#0F6FE6}
+#bb-dock a.bb-go:hover{background:#0B5CC4}
+@media (max-width:560px){#bb-dock a:not(.bb-go){display:none}#bb-dock{padding:6px}#bb-dock a.bb-go{margin-left:0}}
+
+/* "We work with": the list runs sideways */
+.bb-motion :has(>#bb-ticker.bb-on){flex-wrap:nowrap}
+#bb-ticker.bb-on{flex:1 1 0;min-width:0;max-width:100%;overflow:hidden;white-space:nowrap;text-align:left;-webkit-mask-image:linear-gradient(90deg,transparent,#000 9%,#000 91%,transparent);mask-image:linear-gradient(90deg,transparent,#000 9%,#000 91%,transparent)}
+#bb-ticker .bb-tk{display:inline-flex;width:max-content;animation:bb-tk 44s linear infinite}
+#bb-ticker:hover .bb-tk{animation-play-state:paused}
+#bb-ticker .bb-tk span{position:relative;padding:0 24px}
+#bb-ticker .bb-tk span::after{content:"";position:absolute;right:-3px;top:50%;width:5px;height:5px;margin-top:-2px;border-radius:50%;background:currentColor;opacity:.55}
+@keyframes bb-tk{to{transform:translateX(-50%)}}
+
+/* work photos: two rows that slide against each other as the page scrolls */
+#work.bb-rows{overflow:hidden}
+.bb-row{display:flex!important;width:max-content!important;max-width:none!important;gap:16px!important;margin-left:calc(50% - 50vw)!important;will-change:transform}
+.bb-row>*{flex:0 0 auto!important;width:clamp(230px,26vw,400px)!important;max-width:none!important}
+
+/* reviews take turns stepping forward */
+#bb-reviews.bb-live>*{transition:transform .6s cubic-bezier(.2,.7,.2,1),opacity .6s ease,box-shadow .6s ease}
+#bb-reviews.bb-live>:not(.bb-on){opacity:.7;transform:scale(.97)}
+#bb-reviews.bb-live>.bb-on{transform:scale(1.02);box-shadow:0 24px 60px rgba(15,111,230,.16)}
+#bb-reviews.bb-live:hover>*{opacity:1;transform:none}
+
+/* closing: the work photos stand in an arch over the words */
+#closing.bb-arch{position:relative;overflow:hidden;--r:clamp(300px,44vw,620px);--t:clamp(96px,13vw,176px)}
+#bb-ring{position:absolute;left:50%;top:calc(var(--t)*.72 + 26px + var(--r));width:0;height:0;pointer-events:none}
+#bb-ring .bb-tile{position:absolute;left:0;top:0;width:var(--t);aspect-ratio:4/5;margin:calc(var(--t)*-.625) 0 0 calc(var(--t)*-.5);border-radius:calc(var(--t)*.14);overflow:hidden;box-shadow:0 18px 40px rgba(16,20,24,.16);transform:rotate(var(--a,0deg)) translateY(calc(var(--r)*-1));transition:opacity .4s ease}
+#bb-ring .bb-tile img{display:block;width:100%;height:100%;object-fit:cover}
+#closing.bb-arch>#bb-ring+*{position:relative;z-index:1;padding-top:calc(var(--t)*1.5 + 70px)!important}
+
+/* things rise into view once */
+.bb-motion .bb-rv{opacity:0;transform:translateY(24px);transition:opacity .8s cubic-bezier(.2,.7,.2,1) var(--d,0ms),transform .8s cubic-bezier(.2,.7,.2,1) var(--d,0ms)}
+.bb-motion .bb-rv.bb-in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){#bb-ticker .bb-tk{animation:none}}
