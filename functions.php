@@ -9,7 +9,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'BEBRAND_VERSION', '1.2.0-b12b6a7b' );
+define( 'BEBRAND_VERSION', '1.2.0-17799e3d' );
 define( 'BEBRAND_LANDING', 'templates/landing.php' );
 define( 'BEBRAND_FONTS', 'https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400..700&family=Outfit:wght@400;500;600&display=swap' );
 
