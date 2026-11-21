@@ -1,0 +1,825 @@
+window.bbBoot=function(){
+'use strict';
+var bbG=window.bbGen,requestAnimationFrame=function(f){return window.requestAnimationFrame(function(t){if(bbG===window.bbGen)f(t)})},setTimeout=function(f,ms){return window.setTimeout(function(){if(bbG===window.bbGen)f()},ms)};
+var BBD=(function(){var d=document.getElementById('bb-data');try{return d?JSON.parse(d.textContent):{}}catch(e){return {}}})();
+var $=function(s,r){return (r||document).querySelector(s)};
+var $$=function(s,r){return [].slice.call((r||document).querySelectorAll(s))};
+var calm=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+
+(function(){var t=$('#audTrack');if(t)t.innerHTML+=t.innerHTML.replace(/<li>/g,'<li aria-hidden="true">')})();
+
+/* ---------- Live sky ----------
+   The hero background is a real sky, drawn live on a canvas: a clean blue that runs from deep at the top, where the words sit, to
+   pale at the horizon, with real clouds along the bottom. Nothing ever passes behind the words: the clouds live in the band below
+   the buttons and drift across it, the far ones slowly, the near ones faster.
+   The clouds are photographed ones. img/hero.jpg is a strip of a sky panorama, and each cloud here is one whole cloud cut out of it
+   (lifted off the photograph's own sky by colour: cloud is white or grey, sky is blue).
+   They follow the pointer. Move it (or a finger) across the hero and the clouds glide the same way, left or right, a little up or
+   down, the near clouds further than the far ones; across they stay where they were taken.
+   Without WebGL, or if the photograph cannot be read, the hero gets the class flat, which shows the photograph as a plain picture
+   instead. With reduced motion one still frame is drawn. It only draws while the hero is on screen, about 30 times a second when
+   idle, and a device that cannot keep up gets a smaller drawing or, at worst, a still sky.
+   Photograph: "Kloofendal 48d Partly Cloudy (Pure Sky)" from Poly Haven, CC0. */
+var SKY='{{BB_ASSETS}}img/hero.jpg';
+function initSky(){
+  var hero=$('.hero'),copy=$('.hero-copy');
+  if(!hero||!copy)return null;
+  var cv=document.createElement('canvas'),gl=null;
+  try{gl=cv.getContext('webgl',{alpha:false,antialias:false,depth:false,stencil:false,powerPreference:'low-power'})}catch(e){}
+  if(!gl)return null;
+  /* the photograph: its size in px, and the heights above the horizon (degrees) of its top and bottom edges */
+  var TW=3520,TH=890,ETOP=46,EBOT=1.5;
+  /* The clouds, far ones first. Each is one whole cloud (or a small group) in the photograph: left, top, width, height there (px);
+     its layer (0 far, 1 middle, 2 near); how high its base floats above the bottom edge, in band heights (negative: it dips below
+     the edge); 1 if it is shown mirrored; and its size against the others of its layer. */
+  var CL=[
+    [2365,165,860,395,0,.2,1,1],
+    [722,468,226,85,0,.72,0,1.3],
+    [1205,148,855,320,0,.34,0,.9],
+    [0,500,640,228,0,.46,0,1],
+    [2640,616,460,184,1,.22,0,1.15],
+    [0,500,640,228,1,.2,1,1],
+    [832,546,171,106,1,.64,0,1.2],
+    [1205,148,855,320,1,.05,1,1],
+    [1205,148,855,320,2,-.12,0,1],
+    [0,500,640,228,2,-.08,0,1.25],
+    [2365,165,860,395,2,-.25,0,1],
+    [1205,148,855,320,2,-.06,1,.86],
+    [2365,165,860,395,2,-.18,1,.9]
+  ],N=CL.length;
+  /* The layers: size against the near layer; drift in px a second (for a band 400px tall); how far the layer slides with the pointer
+     (px, for a band 250px tall); how much haze; how much room each cloud gets (in cloud widths); where its round starts (0 to 1) */
+  var LAY=[[.4,7,6,.45,2.2,0],[.6,12,12,.16,2.3,.37],[1,20,22,0,1.4,.71]];
+  var HEAD=[
+    '#ifdef GL_FRAGMENT_PRECISION_HIGH',
+    'precision highp float;',
+    '#else',
+    'precision mediump float;',
+    '#endif',
+    'uniform vec2 uRes,uSize;uniform float uY;',
+    'float hash(vec2 p){vec3 v=fract(vec3(p.xyx)*.1031);v+=dot(v,v.yzx+33.33);return fract((v.x+v.y)*v.z);}'
+  ];
+  /* the sky: #006FD6 at the top, #0075DB at the foot of the buttons, then lighter down to a pale horizon */
+  var SKYFS=HEAD.concat([
+    'uniform float uT;',
+    'void main(){',
+    'float y=(1.-gl_FragCoord.y/uRes.y)*uSize.y,g=clamp((y-uY)/max(uSize.y-uY,1.),0.,1.);',
+    'vec3 col=mix(vec3(0.,.435,.839),vec3(0.,.459,.859),clamp(y/max(uY,1.),0.,1.));',
+    'col=mix(col,vec3(.071,.573,.953),smoothstep(0.,.55,g));',
+    'col=mix(col,vec3(.396,.729,.976),smoothstep(.35,.9,g));',
+    'col=mix(col,vec3(.78,.9,.992),smoothstep(.72,1.,g)*.85);',
+    'gl_FragColor=vec4(col+(hash(gl_FragCoord.xy+fract(uT)*61.)-.5)/255.,1.);}'
+  ]).join(String.fromCharCode(10));
+  /* one cloud, drawn over the sky. uA: its box in the photograph (a negative width means mirrored). uB: where it is on screen (left,
+     top), its size (px for each px of photograph) and its haze */
+  var FS=HEAD.concat([
+    'uniform vec2 uTx;uniform float uIn;uniform vec4 uA,uB;uniform sampler2D uS;',
+    /* the photograph at a point (0 to 1 across and down), softened a touch so film grain does not read as cloud */
+    'vec3 shot(vec2 u){vec2 e=1.6/uTx;return (2.*texture2D(uS,u).rgb+texture2D(uS,u+vec2(e.x,0.)).rgb+texture2D(uS,u-vec2(e.x,0.)).rgb+texture2D(uS,u+vec2(0.,e.y)).rgb+texture2D(uS,u-vec2(0.,e.y)).rgb)/6.;}',
+    /* cloud or sky: sky is blue (blue well above red), cloud is white or grey. How blue clear sky is depends on the height in the photograph: pale near the horizon, deep higher up. Returns the colour and how much cloud (0 to 1); the faintest haze is dropped, so every cloud ends cleanly */
+    'vec4 key(vec2 u){vec3 c=shot(u);float el='+ETOP+'.-u.y*'+(ETOP-EBOT)+',a=1.-smoothstep(.5,1.,(c.b-c.r)/max(c.b,.001)/(.1+.26*smoothstep(3.,16.,el)));return vec4(c,a*smoothstep(.04,.2,a));}',
+    'void main(){',
+    'vec2 px=vec2(gl_FragCoord.x/uRes.x,1.-gl_FragCoord.y/uRes.y)*uSize;',
+    'vec2 sz=vec2(abs(uA.z),uA.w)*vec2('+TW+'.,'+TH+'.)*uB.z,l=(px-uB.xy)/sz;',
+    'vec4 k=key(uA.xy+clamp(l,0.,1.)*uA.zw);',
+    /* the box fades out over its last 16px (of photograph), so nothing at its edge shows as a cut */
+    'vec2 e=min(l,1.-l)*sz/uB.z;float a=k.a*smoothstep(0.,16.,min(e.x,e.y));',
+    /* clean the cloud up: thin edges go to white instead of to the photograph's own sky, greys become a soft pale blue */
+    'vec3 cc=mix(vec3(1.),k.rgb,pow(k.a,.6));',
+    'cc=mix(cc,mix(vec3(.7,.81,.96),vec3(1.),smoothstep(.5,.92,dot(cc,vec3(.2126,.7152,.0722)))),.9);',
+    /* far clouds pale into the haze; and every cloud fades out just under the buttons */
+    'cc=mix(cc,vec3(.86,.93,.995),uB.w);',
+    'gl_FragColor=vec4(cc,a*smoothstep(uY+6.,uY+34.,px.y)*uIn);}'
+  ]).join(String.fromCharCode(10));
+  /* two drawings: the sky (P0), and one cloud (P1) laid over it at a time. Both are a rectangle, uQ: left, top, width, height in px (of uV, the hero) */
+  var P0=null,P1=null,U0={},U1={},one=new Uint8Array(4);
+  /* the photograph, the picture made from it on the drawing surface, how wide that was made, and how far the clouds have faded in */
+  var pic=null,ptex=null,pw=0,shown=0;
+  /* W, H: the hero. yb: where the band for the clouds starts (the foot of the buttons); hb: its height from 30px under the buttons to
+     the bottom edge. S: screen px for each px of photograph, for a near cloud. CY: the length of each layer's round, in px; OFF: each
+     cloud's place in it; AA: each cloud's box in the photograph, as fractions (a mirrored one starts at its right edge and runs backwards) */
+  var W=0,H=0,yb=0,hb=200,S=.5,CY=[1,1,1],OFF=new Float32Array(N),AA=CL.map(function(c){return [(c[6]?c[0]+c[2]:c[0])/TW,c[1]/TH,(c[6]?-c[2]:c[2])/TW,c[3]/TH]});
+  /* The photograph goes to the drawing surface no bigger than this screen can show, with smaller copies of itself so the far clouds
+     do not shimmer as they move */
+  function size(){var need=1.3*S*TW,p=need>2300?4096:need>1150?2048:1024,lim=gl.getParameter(gl.MAX_TEXTURE_SIZE);while(p>lim&&p>256)p/=2;return p}
+  function paint(){
+    pw=size();
+    var c2=document.createElement('canvas');c2.width=pw;c2.height=pw/4;var x2=c2.getContext('2d');x2.imageSmoothingQuality='high';x2.drawImage(pic,0,0,pw,pw/4);
+    gl.activeTexture(gl.TEXTURE1);if(ptex)gl.deleteTexture(ptex);ptex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,ptex);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,gl.RGB,gl.UNSIGNED_BYTE,c2);gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.useProgram(P1);gl.uniform2f(U1.uTx,pw,pw/4);gl.activeTexture(gl.TEXTURE0);
+  }
+  function sh(type,src){var s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return gl.getShaderParameter(s,gl.COMPILE_STATUS)?s:null}
+  function prog(v,fs,U,names){
+    var f=sh(gl.FRAGMENT_SHADER,fs);if(!v||!f)return null;
+    var pr=gl.createProgram();gl.attachShader(pr,v);gl.attachShader(pr,f);gl.bindAttribLocation(pr,0,'p');gl.linkProgram(pr);
+    if(!gl.getProgramParameter(pr,gl.LINK_STATUS))return null;
+    names.forEach(function(n){U[n]=gl.getUniformLocation(pr,n)});
+    return pr;
+  }
+  function setup(){
+    var v=sh(gl.VERTEX_SHADER,'attribute vec2 p;uniform vec2 uV;uniform vec4 uQ;void main(){vec2 c=(uQ.xy+p*uQ.zw)/uV;gl_Position=vec4(c.x*2.-1.,1.-c.y*2.,0.,1.);}');
+    P0=prog(v,SKYFS,U0,['uQ','uV','uRes','uSize','uY','uT']);
+    P1=prog(v,FS,U1,['uQ','uV','uRes','uSize','uY','uTx','uIn','uA','uB','uS']);
+    if(!P0||!P1)return false;
+    gl.bindBuffer(gl.ARRAY_BUFFER,gl.createBuffer());gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,0,1,0,0,1,0,1,1,0,1,1]),gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);
+    gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+    gl.useProgram(P1);gl.uniform1i(U1.uS,1);
+    ptex=null;if(pic)paint();
+    return true;
+  }
+  if(!setup())return null;
+  cv.className='sky';cv.setAttribute('aria-hidden','true');hero.insertBefore(cv,hero.firstChild);
+
+  /* How big the canvas is drawn: at most this many pixels, stepping down the list on a device that needs it */
+  var SIZES=[2200000,1400000,900000,520000,250000],lvl=0;
+  /* The pointer: where it is in the hero and whether it is over it; and how far the clouds have followed it, across (par) and up or
+     down (pay), each from -1 to 1. Across they stay where they were taken; up and down they come back once the pointer has left */
+  var fixed=!!calm,ptx=0,pty=0,over=false,par=0,pay=0,gox=0;
+  var T=fixed?40:40+Math.floor(Math.random()*900),prev=0,acc=0,drew=false,ema=0,cnt=0,hot=0,seen=true,run=false,slow=false,held=false,gone=false,ended=false,raf=0;
+  /* how far a layer has travelled across: its drift, and its share of the way the clouds have followed the pointer (the near layer
+     goes about a third of the band either way). And how far it has moved down (up, less: the near clouds must keep their feet
+     below the bottom edge) */
+  function way(l){return T*LAY[l][1]*hb/400+par*LAY[l][2]*hb/70}
+  function drop(l){return pay*(pay<0?.5:1.3)*LAY[l][2]*hb/250}
+  function fit(){
+    var r=hero.getBoundingClientRect();W=Math.round(r.width);H=Math.round(r.height);
+    if(W<2||H<2||gone)return;
+    var s=Math.min(1,Math.sqrt(SIZES[lvl]/(W*H))),w=Math.max(2,Math.round(W*s)),h=Math.max(2,Math.round(H*s));
+    if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}
+    gl.viewport(0,0,w,h);
+    /* the foot of the buttons, measured on the words themselves */
+    var b=0;
+    [].forEach.call(copy.children,function(el){var g=document.createRange();g.selectNodeContents(el);var q=g.getBoundingClientRect();if(q.width>0)b=Math.max(b,q.bottom)});
+    if(!b)b=copy.getBoundingClientRect().bottom;
+    yb=Math.max(0,Math.min(H-40,b-r.top));
+    [[P0,U0],[P1,U1]].forEach(function(o){gl.useProgram(o[0]);gl.uniform2f(o[1].uRes,w,h);gl.uniform2f(o[1].uSize,W,H);gl.uniform2f(o[1].uV,W,H);gl.uniform1f(o[1].uY,yb)});
+    /* the clouds start 30px under the buttons; the near clouds stand a little taller than the band, with their feet below the bottom edge, and none is wider than the screen */
+    hb=Math.max(40,H-yb-30);S=Math.min(1.2*hb/395,1.05*W/860);
+    /* each layer's clouds are set out one after another round its round, which is long enough that no cloud is ever on screen twice */
+    for(var l=0;l<3;l++){
+      var k=S*LAY[l][0],sum=0,big=0;
+      CL.forEach(function(c,i){if(c[4]===l){OFF[i]=sum;var cw=c[2]*c[7]*k;sum+=cw*LAY[l][4];big=Math.max(big,cw)}});
+      CY[l]=Math.max(sum,W+big+60);
+      CL.forEach(function(c,i){if(c[4]===l)OFF[i]*=CY[l]/sum});
+    }
+    if(pic&&size()!==pw)paint();
+  }
+  /* The sky first, then every cloud that is on screen right now, far ones first. Each layer goes round at its own pace, and follows
+     the pointer by its own share: the near clouds most, the far ones least */
+  function draw(){
+    if(gone||!W)return;
+    gl.disable(gl.BLEND);gl.useProgram(P0);gl.uniform1f(U0.uT,T);gl.uniform4f(U0.uQ,0,0,W,H);gl.drawArrays(gl.TRIANGLES,0,6);
+    if(!pic||shown<=0)return;
+    gl.enable(gl.BLEND);gl.useProgram(P1);gl.uniform1f(U1.uIn,shown);
+    for(var i=0;i<N;i++){
+      var c=CL[i],L=LAY[c[4]],k=S*L[0]*c[7],C=CY[c[4]],w=c[2]*k,h=c[3]*k,x=(OFF[i]+L[5]*C+way(c[4]))%C;
+      x=(x<0?x+C:x)-w;
+      if(x+w<0||x>W)continue;
+      var y=H-c[5]*hb-h+drop(c[4]);
+      gl.uniform4f(U1.uA,AA[i][0],AA[i][1],AA[i][2],AA[i][3]);gl.uniform4f(U1.uB,x,y,k,L[3]);
+      gl.uniform4f(U1.uQ,x,y,w,h);gl.drawArrays(gl.TRIANGLES,0,6);
+    }
+  }
+  /* each frame: the clouds glide after the pointer, and fade in once the photograph has arrived */
+  function ease(dt){
+    var goy=over?Math.max(-1,Math.min(1,(pty/H-.5)*2)):0,k=1-Math.exp(-dt/.45);
+    if(over)gox=Math.max(-1,Math.min(1,(ptx/W-.5)*2));
+    if(Math.abs(gox-par)>.002||Math.abs(goy-pay)>.002){par+=(gox-par)*k;pay+=(goy-pay)*k;hot=performance.now()+300}
+    if(pic&&shown<1)shown=Math.min(1,shown+dt/1.1);
+  }
+  function halt(){slow=true;run=false;if(pic){shown=1;draw()}}
+  function quit(){if(ended)return;ended=true;run=false;gone=true;if(ro)ro.disconnect();hero.classList.remove('live');hero.classList.add('flat');if(cv.parentNode)cv.parentNode.removeChild(cv)}
+  function tick(now){
+    raf=0;if(!run)return;
+    raf=requestAnimationFrame(tick);
+    var d=prev?now-prev:16;prev=now;
+    /* a long run of slow frames after drawing means this device is not keeping up: draw smaller, or stop moving */
+    if(drew&&d<400){ema=ema?ema*.9+d*.1:d;if(++cnt>45&&ema>50){cnt=0;ema=0;if(lvl<SIZES.length-1){lvl++;fit();draw()}else{halt();return}}}
+    drew=false;acc+=Math.min(d,100);
+    if(acc<(now<hot?13:30))return;
+    var dt=acc/1000;acc=0;T+=dt;
+    ease(dt);
+    draw();drew=true;
+  }
+  function sync(){
+    var want=seen&&!fixed&&!slow&&!held&&!gone;
+    if(want&&!run){run=true;prev=0;if(!raf)raf=requestAnimationFrame(tick)}else if(!want)run=false;
+  }
+  /* A few timed drawings once the page has loaded set the size for this device. The quickest of them counts, since the page may be
+     busy with something else at that moment. After a change of size it is timed again, and only if the smallest size is still too
+     slow (over 14ms a frame) does the sky stay still. */
+  function cost(){var t0=performance.now();draw();gl.readPixels(0,0,1,1,gl.RGBA,gl.UNSIGNED_BYTE,one);return performance.now()-t0}
+  var best=1e9,tries=0;
+  function gauge(){
+    if(fixed||slow||held||gone)return;
+    if(document.hidden||!W){setTimeout(gauge,600);return}
+    best=Math.min(best,cost());
+    if(++tries<3){setTimeout(gauge,350);return}
+    var n=function(l){return Math.min(W*H,SIZES[l])},l=lvl;
+    while(l<SIZES.length-1&&best*n(l)/n(lvl)>9)l++;
+    if(l!==lvl){lvl=l;fit();draw();best=1e9;tries=0;setTimeout(gauge,350)}
+    else if(best>14)halt();
+  }
+  fit();draw();
+  requestAnimationFrame(function(){hero.classList.add('live')});
+  /* the photograph: once it is in, the clouds fade in (at once for the still frame). If it cannot be read the stand-in takes over */
+  var im=new Image();
+  if(/^https?:/.test(SKY)&&SKY.indexOf(location.origin+'/')!==0)im.crossOrigin='anonymous';
+  im.onload=function(){if(ended)return;try{pic=im;paint();if(fixed)shown=1;draw()}catch(e){pic=null;quit()}};
+  im.onerror=quit;
+  im.src=SKY;
+  if(window.ResizeObserver){var ro=new ResizeObserver(function(){fit();draw()});ro.observe(hero);ro.observe(copy)}
+  /* if the browser takes the drawing surface away, the stand-in photograph shows until it is given back */
+  cv.addEventListener('webglcontextlost',function(e){e.preventDefault();run=false;gone=true;if(!ended){hero.classList.remove('live');hero.classList.add('flat')}});
+  cv.addEventListener('webglcontextrestored',function(){gone=false;if(setup()){fit();draw();sync();hero.classList.remove('flat');hero.classList.add('live')}});
+  /* the pointer is at x, y (px in the hero) */
+  function move(x,y){ptx=x;pty=y;over=true;hot=performance.now()+400}
+  if(!fixed){
+    var at=function(e){var r=hero.getBoundingClientRect();move(e.clientX-r.left,e.clientY-r.top)},off=function(){over=false};
+    hero.addEventListener('pointermove',function(e){if(e.pointerType!=='touch')at(e)},{passive:true});
+    hero.addEventListener('pointerleave',off);
+    hero.addEventListener('touchmove',function(e){var t=e.touches[0];if(t)at(t)},{passive:true});
+    hero.addEventListener('touchend',off,{passive:true});
+    hero.addEventListener('touchcancel',off,{passive:true});
+    if('IntersectionObserver' in window)new IntersectionObserver(function(en){seen=en[0].isIntersecting;sync()}).observe(hero);
+    sync();
+    setTimeout(gauge,900);
+  }
+  /* cv.sky: for looking at the sky from the console: its state, hold (stop the clock, optionally at a given size from the list), a frame at a given time, the pointer put at a point (and taken away again) */
+  return cv.sky={
+    stop:function(){run=false;gone=true;ended=true;if(ro)ro.disconnect();var x=gl.getExtension('WEBGL_lose_context');if(x)x.loseContext()},
+    hold:function(l){held=true;slow=false;run=false;if(l!=null){lvl=l;fit()}draw()},
+    frame:function(t,dt){if(t!=null)T=t;if(pic&&!dt)shown=1;if(dt)ease(dt);draw()},
+    point:move,leave:function(){over=false},
+    state:function(){return {lvl:lvl,px:cv.width*cv.height,still:fixed||slow,run:run,par:+par.toFixed(3),pay:+pay.toFixed(3),photo:!!pic,wide:pw,shown:shown,band:Math.round(hb),scale:+S.toFixed(3)}}
+  };
+}
+var sky=initSky();
+if(!sky&&$('.hero'))$('.hero').classList.add('flat');
+
+/* Photo strip: twelve photographs (img/w-1.jpg … w-12.jpg; sources in make_work_backgrounds.py) fill the two scrolling rows
+   and the closing ring. They are stock pictures of homes and rooms, not projects, so nothing here labels them as work.
+   The letter is the pastel shown while a photo loads. */
+var WORK='cbcdcaabdcba'.split('').map(function(bg,i){return {bg:bg,v:'<img class="viz-bg" src="'+((BBD.work&&BBD.work[i])||'{{BB_ASSETS}}img/w-'+(i+1)+'.jpg')+'" alt="" loading="lazy" decoding="async">'}});
+function tileRow(list){var out='';for(var k=0;k<2;k++)out+=list.map(function(w){return '<li'+(k?' class="dup"':'')+'><div class="tile"><div class="viz '+w.bg+'">'+w.v+'</div></div></li>'}).join('');return out}
+$('#arcTop').innerHTML=tileRow(WORK.slice(0,6));
+$('#arcBot').innerHTML=tileRow(WORK.slice(6));
+/* Work rows follow the page scroll. From the moment the section enters at the bottom of the screen to the moment it
+   leaves at the top, the top row slides left and the bottom row slides right; scrolling back up reverses both.
+   With reduced motion the rows stay still and can be scrolled sideways by hand (see the CSS). */
+(function(){
+  var sec=$('#work'),top=$('#arcTop'),bot=$('#arcBot');
+  if(!sec||!top||!bot||calm)return;
+  var lead=0,room=0,tick=0,was=-1;
+  function measure(){
+    var first=top.firstElementChild;
+    lead=first?first.offsetWidth*.5:0; /* start half a tile in, so a cropped tile shows at both edges */
+    room=Math.max(0,Math.min(top.offsetWidth,bot.offsetWidth)-document.documentElement.clientWidth-lead); /* how far a row can slide before its end shows */
+    was=-1;place();
+  }
+  function place(){
+    tick=0;
+    var r=sec.getBoundingClientRect(),vh=window.innerHeight,span=vh+r.height;
+    var p=Math.min(1,Math.max(0,(vh-r.top)/span)); /* 0 as the section enters, 1 as it leaves */
+    if(p===was)return;was=p;
+    var travel=Math.min(span*.45,room); /* about half a pixel sideways per pixel scrolled */
+    top.style.transform='translate3d('+(-(lead+p*travel)).toFixed(1)+'px,0,0)';
+    bot.style.transform='translate3d('+(-(lead+(1-p)*travel)).toFixed(1)+'px,0,0)';
+  }
+  function ask(){if(!tick)tick=requestAnimationFrame(place)}
+  window.addEventListener('scroll',ask,{passive:true});
+  window.addEventListener('resize',function(){if(!tick)tick=requestAnimationFrame(measure)});
+  measure();
+})();
+
+/* closing arch: nine tiles from lower left, over the top, to lower right */
+/* Closing arch: ten tiles on a ring. It drifts slowly, leans toward the pointer, and a click on a tile goes to the work. */
+(function(){
+  var arch=$('.arch'),ring=$('#archRing'),STEP=24,N=10,SPAN=N*STEP,rot=0,lean=0,want=0,last=0,live=false,raf=0,h='';
+  for(var i=0;i<N;i++){var w=WORK[i%WORK.length];h+='<div class="arch-tile"><div class="viz '+w.bg+'">'+w.v+'</div></div>'}
+  ring.innerHTML=h;
+  var tiles=$$('.arch-tile',ring);
+  function place(){
+    tiles.forEach(function(t,i){
+      var a=((i*STEP+rot+lean)%SPAN+SPAN)%SPAN-SPAN/2,r=a*Math.PI/180;
+      t.style.setProperty('--a',a.toFixed(2)+'deg');t.style.setProperty('--s',Math.sin(r).toFixed(4));t.style.setProperty('--c',Math.cos(r).toFixed(4));
+      /* fade out past the ends of the arch, so the hop back to the other side is never seen */
+      var o=Math.max(0,Math.min(1,(104-Math.abs(a))/8));if(o!==t.rvO){t.rvO=o;t.style.opacity=o;t.style.visibility=o?'':'hidden'}
+    });
+  }
+  function frame(t){
+    var dt=Math.min(60,t-(last||t));last=t;
+    rot+=dt*.0016;lean+=(want-lean)*Math.min(1,dt*.005);
+    place();
+    raf=live?requestAnimationFrame(frame):0;
+  }
+  function run(on){live=on&&!calm;if(live&&!raf){last=0;raf=requestAnimationFrame(frame)}}
+  place();
+  arch.addEventListener('pointermove',function(e){var b=arch.getBoundingClientRect();want=((e.clientX-b.left)/b.width-.5)*28});
+  arch.addEventListener('pointerleave',function(){want=0});
+  ring.addEventListener('click',function(e){if(e.target.closest('.arch-tile')){var el=document.getElementById('work');if(el)el.scrollIntoView({behavior:calm?'auto':'smooth',block:'start'})}});
+  if('IntersectionObserver' in window)new IntersectionObserver(function(en){run(en[0].isIntersecting)}).observe(arch);else run(true);
+})();
+/* The photo rows and the closing ring slide their tiles in from the side. Their photos load one screen before the section
+   arrives (not one by one as each tile appears), so a tile never slides in blank on a slow phone connection. */
+if('IntersectionObserver' in window)['#work','.arch'].forEach(function(sel){
+  var sec=$(sel);if(!sec)return;
+  new IntersectionObserver(function(en,io){if(!en[0].isIntersecting)return;io.disconnect();$$('img[loading="lazy"]',sec).forEach(function(im){im.loading='eager'})},{rootMargin:'100% 0px'}).observe(sec);
+});
+
+/* Services: title and one line each. MK holds their mockups in the same order: plain HTML written out by the generator kept with
+   the project (mock.py) and styled in the stylesheet ("the mockups"). @wN@ in them stands for the address of listing photo N. */
+var CAPS=BBD.caps||[
+ ['Logo design and identity','A logo, colours and type that look right on a yard sign, a business card and a listing.'],
+ ['Brand guidelines and stationery','Simple rules for your logo, colours and type, with business cards and stationery to match.'],
+ ['Personal brand kit','Your name, headshot and style turned into a kit you can use on every listing and post.'],
+ ['Flyers and marketing graphics','Just listed, open house and just sold flyers in your brand, ready to print or share.'],
+ ['Presentations and pitch decks','Listing presentations and pitch decks that help you win the seller meeting.'],
+ ['Social media design','Post and story templates in your brand, so every update looks like it came from you.'],
+ ['Custom website design and build','A custom site with your listings and lead capture, approved as a live prototype before we build it.']
+];
+var MK=[
+'<div class="mk"><div class="k-p k-dk kl-alt kmv" style="left:24.4em;top:8.6em;width:11em;height:11em;--r0:7deg;--x:1.2em;--y:.2em;--rt:4deg"><span class="k-lg"><svg viewBox="0 0 24 24"><path d="M3.5 11.6L12 4.5l8.5 7.1V20h-5.7v-5.2H9.2V20H3.5z"/></svg></span></div><div class="k-p kl-main kmv" style="left:7.6em;top:3.4em;width:20.4em;height:12.6em;--y:-.6em"><u class="kl-cap">Primary logo</u><u class="kl-cap r">01 / 04</u><i class="kl-g h kfd" style="top:2.75em"></i><i class="kl-g h kfd" style="top:10.5em"></i><i class="kl-g v kfd" style="left:4.9em"></i><i class="kl-g v kfd" style="right:4.9em"></i><span class="k-lg"><svg viewBox="0 0 24 24"><path d="M3.5 11.6L12 4.5l8.5 7.1V20h-5.7v-5.2H9.2V20H3.5z"/></svg></span><b class="kl-wm">Your Name</b><u class="kl-wt">REAL ESTATE</u></div><span class="kl-app kmv" style="left:3.5em;top:7.2em;--r0:-9deg;--x:-.7em;--y:-.5em;--rt:-5deg;--i:1"><svg viewBox="0 0 24 24"><path d="M3.5 11.6L12 4.5l8.5 7.1V20h-5.7v-5.2H9.2V20H3.5z"/></svg></span><span class="kl-chip kmv" style="left:1.3em;top:16.1em;--r0:-9deg;--x:-.7em;--y:-.35em;--rt:-3deg;--i:0"><i style="background:#16243F"></i><b>Navy</b><u>#16243F</u></span><span class="kl-chip kmv" style="left:4.65em;top:15.75em;--r0:-3deg;--x:-.25em;--y:-.35em;--rt:-1deg;--i:1"><i style="background:#0F6FE6"></i><b>Blue</b><u>#0F6FE6</u></span><span class="kl-chip kmv" style="left:8em;top:15.75em;--r0:3deg;--x:.25em;--y:-.35em;--rt:1deg;--i:2"><i style="background:#E9D8B4"></i><b>Sand</b><u>#E9D8B4</u></span><span class="kl-chip kmv" style="left:11.35em;top:16.1em;--r0:9deg;--x:.7em;--y:-.35em;--rt:3deg;--i:3"><i style="background:#EEF2F7"></i><b>Mist</b><u>#EEF2F7</u></span><span class="k-bdg kpop" style="left:26.1em;top:1.6em"><svg viewBox="0 0 24 24"><path d="M5.5 12.5l4.2 4.2 8.8-9.4"/></svg></span></div>',
+'<div class="mk"><div class="k-p kg-pg kmv" style="left:1.5em;top:2.2em;width:14.8em;height:23em;--r0:-5deg;--x:-.8em;--rt:-2deg"><span class="kg-hd"><u class="k-ey">Brand guidelines</u><u>v1.0</u></span><span class="kg-ty"><b class="kg-aa">Aa</b><span><b>Outfit</b><u>Headings</u><b>DM Sans</b><u>Body text</u></span></span><u class="kg-abc">ABCDEFGHIJKLMNOPQRSTUVWXYZ</u><u class="kg-sec">Colours</u><span class="kg-sq"><span><i style="background:#16243F"></i><u>Navy</u></span><span><i style="background:#0F6FE6"></i><u>Blue</u></span><span><i style="background:#E9D8B4"></i><u>Sand</u></span><span><i style="background:#EEF2F7"></i><u>Mist</u></span></span><u class="kg-sec">Logo use</u><u class="kg-tx">Keep clear space around the logo equal to the height of the mark. Use the navy logo on light backgrounds and the white logo on photos.</u></div><div class="k-p k-dk kg-bc kmv" style="left:17.3em;top:2em;width:16.4em;height:9.4em;--r0:5deg;--x:.9em;--y:-.9em;--rt:3deg;--i:1"><span class="k-lg"><svg viewBox="0 0 24 24"><path d="M3.5 11.6L12 4.5l8.5 7.1V20h-5.7v-5.2H9.2V20H3.5z"/></svg></span><b>Your Name</b><u class="kl-wt">REAL ESTATE</u></div><div class="k-p kg-bc kg-fr kmv" style="left:18.6em;top:10.5em;width:16.4em;height:9.4em;--r0:-3deg;--x:.5em;--y:.4em;--rt:-2deg;--i:2"><span class="k-lg"><svg viewBox="0 0 24 24"><path d="M3.5 11.6L12 4.5l8.5 7.1V20h-5.7v-5.2H9.2V20H3.5z"/></svg></span><b>Your Name</b><small>Real Estate Agent</small><span class="k-ct"><svg class="k-ic" viewBox="0 0 24 24"><rect x="7" y="2.8" width="10" height="18.4" rx="2.4"/><path d="M11 17.6h2"/></svg>(555) 555-0142</span><span class="k-ct"><svg class="k-ic" viewBox="0 0 24 24"><rect x="3" y="5.5" width="18" height="13" rx="2.2"/><path d="M3.6 7.4l8.4 6 8.4-6"/></svg>you@yourname.com</span><span class="k-ct"><svg class="k-ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.8"/><path d="M3.2 12h17.6M12 3.2c3 3.2 3 14.4 0 17.6M12 3.2c-3 3.2-3 14.4 0 17.6"/></svg>yourname.com</span></div></div>',
+'<div class="mk"><i class="kk-post" style="left:33.3em;top:0.5em;width:1.3em;height:24em"></i><i class="kk-arm" style="left:21.2em;top:2.3em;width:14.4em;height:1.1em"></i><div class="kk-hang" style="left:21.9em;top:4.4em;width:10.7em"><div class="kk-sign"><u>FOR SALE</u><span class="k-lg"><svg viewBox="0 0 24 24"><path d="M3.5 11.6L12 4.5l8.5 7.1V20h-5.7v-5.2H9.2V20H3.5z"/></svg></span><b>Your Name</b><em>REAL ESTATE</em><span class="kk-tel">(555) 555-0142</span></div><u class="kk-rider">OPEN HOUSE</u></div><div class="k-p kk-mail kmv" style="left:1.2em;top:5.9em;width:19.9em;height:17.4em;--y:-.7em"><span class="kk-top"><i></i><i></i><i></i><b>New message</b></span><span class="kk-fld"><u>Subject</u><b>Open house this Saturday</b><svg class="k-ic" viewBox="0 0 24 24"><path d="M19.4 11.4l-7.3 7.3a4.6 4.6 0 0 1-6.5-6.5l7.6-7.6a3.1 3.1 0 0 1 4.4 4.4l-7.5 7.5a1.6 1.6 0 0 1-2.3-2.3l6.9-6.9"/></svg></span><u class="kk-bd">Thanks for coming by today. The full listing details are attached, and I am happy to set up a second showing.</u><u class="kk-br">Best regards,</u><span class="kk-sig"><span class="k-av">YN</span><span class="kk-id"><b>Your Name</b><small>Real Estate Agent</small><span class="k-ct"><svg class="k-ic" viewBox="0 0 24 24"><rect x="7" y="2.8" width="10" height="18.4" rx="2.4"/><path d="M11 17.6h2"/></svg>(555) 555-0142</span><span class="k-ct"><svg class="k-ic" viewBox="0 0 24 24"><rect x="3" y="5.5" width="18" height="13" rx="2.2"/><path d="M3.6 7.4l8.4 6 8.4-6"/></svg>you@yourname.com</span><span class="k-ct"><svg class="k-ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.8"/><path d="M3.2 12h17.6M12 3.2c3 3.2 3 14.4 0 17.6M12 3.2c-3 3.2-3 14.4 0 17.6"/></svg>yourname.com</span></span><span class="k-lg"><svg viewBox="0 0 24 24"><path d="M3.5 11.6L12 4.5l8.5 7.1V20h-5.7v-5.2H9.2V20H3.5z"/></svg></span></span></div></div>',
+'<div class="mk"><div class="k-p kf-2 kmv" style="left:2.6em;top:6.4em;width:13em;height:18em;--r0:-9deg;--x:-1.5em;--rt:-4deg"><i class="k-ph" style="background-image:url(@w7@)"></i><u class="k-ey">Open house</u><b>Sat 1&ndash;4 PM</b><span class="k-ct"><svg class="k-ic" viewBox="0 0 24 24"><path d="M12 21.2s6.6-6 6.6-11.2a6.6 6.6 0 1 0-13.2 0c0 5.2 6.6 11.2 6.6 11.2z"/><circle cx="12" cy="10" r="2.3"/></svg>45 Lakeview Dr</span></div><div class="k-p kf-2 r kmv" style="left:20.4em;top:6.4em;width:13em;height:18em;--r0:9deg;--x:1.5em;--rt:4deg"><i class="k-ph" style="background-image:url(@w11@)"></i><u class="k-ey">Just sold</u><b>88 Oak Ave</b><span class="k-ct"><svg class="k-ic" viewBox="0 0 24 24"><path d="M3.2 18.6V6.4M3.2 14.2h17.6v4.4M20.8 14.2v-2a3 3 0 0 0-3-3h-6.4v5"/><circle cx="7.3" cy="10.9" r="1.7"/></svg>4 bd &middot; 3 ba</span></div><div class="k-p kf-1 kmv" style="left:10.4em;top:2.2em;width:15.2em;height:21em;--y:-.9em;--i:1"><i class="k-ph" style="background-image:url(@w9@)"><u class="k-tg">JUST LISTED</u></i><span class="kf-pr"><b>$485,000</b><u>For sale</u></span><b class="kf-ad">123 Maple Street</b><span class="kf-sp"><span><svg class="k-ic" viewBox="0 0 24 24"><path d="M3.2 18.6V6.4M3.2 14.2h17.6v4.4M20.8 14.2v-2a3 3 0 0 0-3-3h-6.4v5"/><circle cx="7.3" cy="10.9" r="1.7"/></svg>3 bd</span><span><svg class="k-ic" viewBox="0 0 24 24"><path d="M3.6 12.6h16.8v1.6a4.6 4.6 0 0 1-4.6 4.6H8.2a4.6 4.6 0 0 1-4.6-4.6zM6.4 12.6V6.3a2.3 2.3 0 0 1 4.4-.9"/></svg>2 ba</span><span><svg class="k-ic" viewBox="0 0 24 24"><path d="M4.4 4.4h15.2v15.2H4.4zM4.4 9.6h3.4M4.4 14.6h3.4M9.6 19.6v-3.4M14.6 19.6v-3.4"/></svg>1,850 sq ft</span></span><span class="kf-ft"><span class="k-av">YN</span><span><b>Your Name</b><small>(555) 555-0142</small></span><i class="kf-qr"><svg viewBox="0 0 21 21" shape-rendering="crispEdges"><path d="M0 0.5h7M8 0.5h2M11 0.5h1M14 0.5h7M0 1.5h1M6 1.5h1M8 1.5h2M11 1.5h2M14 1.5h1M20 1.5h1M0 2.5h1M2 2.5h3M6 2.5h1M8 2.5h3M12 2.5h1M14 2.5h1M16 2.5h3M20 2.5h1M0 3.5h1M2 3.5h3M6 3.5h1M8 3.5h1M12 3.5h1M14 3.5h1M16 3.5h3M20 3.5h1M0 4.5h1M2 4.5h3M6 4.5h1M9 4.5h1M11 4.5h2M14 4.5h1M16 4.5h3M20 4.5h1M0 5.5h1M6 5.5h1M8 5.5h2M11 5.5h1M14 5.5h1M20 5.5h1M0 6.5h7M8 6.5h1M10 6.5h1M12 6.5h1M14 6.5h7M9 7.5h1M11 7.5h2M0 8.5h1M2 8.5h2M5 8.5h3M10 8.5h1M15 8.5h1M17 8.5h2M20 8.5h1M1 9.5h1M7 9.5h1M11 9.5h1M14 9.5h1M16 9.5h1M0 10.5h2M3 10.5h6M10 10.5h3M14 10.5h2M20 10.5h1M0 11.5h2M4 11.5h2M7 11.5h2M11 11.5h4M0 12.5h1M5 12.5h4M10 12.5h11M10 13.5h5M17 13.5h1M19 13.5h2M0 14.5h7M8 14.5h2M11 14.5h2M15 14.5h1M17 14.5h1M0 15.5h1M6 15.5h1M9 15.5h3M15 15.5h2M0 16.5h1M2 16.5h3M6 16.5h1M10 16.5h1M12 16.5h5M19 16.5h1M0 17.5h1M2 17.5h3M6 17.5h1M10 17.5h5M18 17.5h1M0 18.5h1M2 18.5h3M6 18.5h1M8 18.5h1M13 18.5h2M16 18.5h1M19 18.5h2M0 19.5h1M6 19.5h1M10 19.5h3M15 19.5h1M19 19.5h1M0 20.5h7M8 20.5h2M14 20.5h1M17 20.5h4" fill="none" stroke="#16243F"/></svg></i></span></div></div>',
+'<div class="mk"><div class="k-p kd-sl kmv" style="left:3.6em;top:1.1em;width:28.8em;height:16.2em;--y:-.6em"><span><u class="k-ey">Listing presentation</u><b class="kd-t">How we will market your home</b><span class="kd-li">Pro photos, video and a floor plan</span><span class="kd-li">Live on the MLS and every portal</span><span class="kd-li">Open house in the first week</span></span><span class="kd-cw"><u>Buyer views by week</u><span class="kd-ch"><i style="--h:.38;--i:0"></i><i style="--h:.54;--i:1"></i><i style="--h:.74;--i:2"></i><i style="--h:.96;--i:3"></i></span><span class="kd-ax"><u>Wk 1</u><u>Wk 2</u><u>Wk 3</u><u>Wk 4</u></span></span><span class="kd-fo"><span class="k-lg"><svg viewBox="0 0 24 24"><path d="M3.5 11.6L12 4.5l8.5 7.1V20h-5.7v-5.2H9.2V20H3.5z"/></svg></span><b>Your Name</b><u>02 / 12</u></span></div><div class="k-p kd-th k-dk kd-cv" style="left:4em;top:18.5em;width:6.4em;height:3.6em"><span class="k-lg"><svg viewBox="0 0 24 24"><path d="M3.5 11.6L12 4.5l8.5 7.1V20h-5.7v-5.2H9.2V20H3.5z"/></svg></span><i class="k-bar" style="width:62%;margin-top:.5em"></i><i class="k-bar" style="width:40%"></i></div><div class="k-p kd-th kd-on" style="left:11.2em;top:18.5em;width:6.4em;height:3.6em"><span><i class="k-bar" style="width:70%"></i><i class="k-bar" style="width:100%"></i><i class="k-bar" style="width:84%"></i></span><span class="kd-mc"><i></i><i></i><i></i><i></i></span></div><div class="k-p kd-th" style="left:18.4em;top:18.5em;width:6.4em;height:3.6em"><i class="k-ph" style="background-image:url(@w9@)"></i></div><div class="k-p kd-th kd-sp" style="left:25.6em;top:18.5em;width:6.4em;height:3.6em"><i class="k-ph" style="background-image:url(@w7@)"></i><span><i class="k-bar" style="width:80%"></i><i class="k-bar" style="width:100%"></i><i class="k-bar" style="width:60%"></i></span></div></div>',
+'<div class="mk"><div class="k-p ks-tile kmv" style="left:1.4em;top:6.6em;width:9.6em;height:15.6em;--r0:-8deg;--x:-1.1em;--rt:-3deg;background-image:url(@w7@)"><span class="ks-br"><span class="k-lg"><svg viewBox="0 0 24 24"><path d="M3.5 11.6L12 4.5l8.5 7.1V20h-5.7v-5.2H9.2V20H3.5z"/></svg></span>Your Name</span><span class="ks-cx"><u class="k-tg">OPEN HOUSE</u><b>45 Lakeview Drive</b><u>Saturday, 1 to 4 PM</u></span></div><div class="k-p ks-tile kmv" style="left:24.8em;top:9.2em;width:10em;height:10em;--r0:7deg;--x:1.1em;--rt:3deg;background-image:url(@w9@)"><span class="ks-br"><span class="k-lg"><svg viewBox="0 0 24 24"><path d="M3.5 11.6L12 4.5l8.5 7.1V20h-5.7v-5.2H9.2V20H3.5z"/></svg></span>Your Name</span><span class="ks-cx"><u class="k-tg">NEW LISTING</u><b>123 Maple Street</b></span></div><div class="ks-ph kmv" style="left:10.8em;top:1.3em;width:14.4em;height:28em;--y:-.8em;--i:1"><div class="ks-scr"><span class="ks-st">9:41<svg viewBox="0 0 52 12"><rect x="0" y="7.4" width="2.4" height="3.6" rx=".6"/><rect x="3.7" y="5.3" width="2.4" height="5.7" rx=".6"/><rect x="7.4" y="3.2" width="2.4" height="7.8" rx=".6"/><rect x="11.1" y="1" width="2.4" height="10" rx=".6"/><path d="M18.2 4.7a8 8 0 0 1 10.6 0M20.1 7a5 5 0 0 1 6.8 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="23.5" cy="9.7" r="1.3"/><rect x="33.6" y="1.6" width="14.8" height="8.8" rx="2.6" fill="none" stroke="currentColor" stroke-opacity=".45"/><rect x="35.1" y="3.1" width="11.8" height="5.8" rx="1.3"/><rect x="49.4" y="4.2" width="1.6" height="3.6" rx=".8" fill-opacity=".45"/></svg></span><span class="ks-hd"><span class="ks-rg"><span class="k-av">YN</span></span><span><b>yourname</b><small>Real estate agent</small></span><i class="ks-dt"></i></span><i class="k-ph" style="background-image:url(@w11@)"><u class="k-tg">JUST SOLD</u><em>88 Oak Avenue</em></i><span class="ks-act"><svg viewBox="0 0 24 24"><path d="M12 20.3S4 15.6 4 9.9C4 7.2 6.1 5.3 8.4 5.3c1.5 0 2.8.8 3.6 2 .8-1.2 2.1-2 3.6-2C17.9 5.3 20 7.2 20 9.9c0 5.7-8 10.4-8 10.4z"/></svg><svg viewBox="0 0 24 24"><path d="M20 11.5a7.5 7.5 0 0 1-11.2 6.5L4.5 19l1.1-4A7.5 7.5 0 1 1 20 11.5z"/></svg><svg viewBox="0 0 24 24"><path d="M20.5 4L3.5 10.8l6.8 2.6 2.6 6.8z M10.3 13.4L20.5 4"/></svg><svg viewBox="0 0 24 24"><path d="M6.4 3.8h11.2v16.8L12 16.4l-5.6 4.2z"/></svg></span><u class="ks-cp"><b>yourname</b> Just sold. Thinking of selling this spring? Send me a message.</u></div></div><span class="ks-hrt kpop" style="left:22.9em;top:7.3em"><svg viewBox="0 0 24 24"><path d="M12 20.3S4 15.6 4 9.9C4 7.2 6.1 5.3 8.4 5.3c1.5 0 2.8.8 3.6 2 .8-1.2 2.1-2 3.6-2C17.9 5.3 20 7.2 20 9.9c0 5.7-8 10.4-8 10.4z"/></svg></span></div>',
+'<div class="mk"><div class="k-p kw-b kmv" style="left:2.2em;top:0.9em;width:31.6em;height:24em;--y:-.6em"><span class="kw-tb"><i></i><i></i><i></i><u class="kw-url"><svg class="k-ic" viewBox="0 0 24 24"><rect x="5.4" y="10.4" width="13.2" height="9.8" rx="2.2"/><path d="M8.4 10.4V8a3.6 3.6 0 0 1 7.2 0v2.4"/></svg>yourname.com</u></span><span class="kw-nv"><span class="k-lg"><svg viewBox="0 0 24 24"><path d="M3.5 11.6L12 4.5l8.5 7.1V20h-5.7v-5.2H9.2V20H3.5z"/></svg></span><b>Your Name</b><u>Buy</u><u>Sell</u><u>Listings</u><u>About</u><em>Contact</em></span><span class="kw-hero" style="background-image:url(@w1@)"><b>Find your next home</b><u>Homes for sale across the city, updated every day.</u><span class="kw-s"><svg class="k-ic" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.4"/><path d="M15.6 15.6l4.8 4.8"/></svg><small>City, ZIP or address</small><em>Search</em></span></span><span class="kw-ls"><span><i class="k-ph" style="background-image:url(@w7@)"><em>New</em></i><b>$485,000</b><u>123 Maple Street</u><u>3 bd &middot; 2 ba &middot; 1,850 sq ft</u></span><span><i class="k-ph" style="background-image:url(@w8@)"></i><b>$612,000</b><u>45 Lakeview Drive</u><u>3 bd &middot; 2 ba &middot; 1,850 sq ft</u></span><span><i class="k-ph" style="background-image:url(@w10@)"></i><b>$539,000</b><u>88 Oak Avenue</u><u>3 bd &middot; 2 ba &middot; 1,850 sq ft</u></span></span></div><div class="k-p kw-nt kmv" style="left:22.6em;top:12.2em;width:12.4em;height:4.3em;--x:.5em;--y:-.9em;--i:2"><i><svg viewBox="0 0 24 24"><path d="M5.5 12.5l4.2 4.2 8.8-9.4"/></svg></i><span><b>New lead</b><small>Showing request &middot; just now</small></span></div><span class="kw-cur kmv" style="left:27.6em;top:18.9em;--x:-7.5em;--y:-6.75em"><svg viewBox="0 0 24 24"><path d="M5 3l14 8.5-6.2 1.3L16.4 20l-2.9 1.3-3.5-7.1L5.6 18z"/></svg></span></div>'
+].map(function(m){return m.replace(/@w([0-9]+)@/g,function(x,n){return '{{BB_ASSETS}}img/w-'+n+'.jpg'})});
+$('#caps').innerHTML=CAPS.map(function(c,i){return '<article class="cap"><h3>'+c[0]+'</h3><p class="cap-d">'+c[1]+'</p><a class="btn arrow sm cap-cta" href="#start" data-svc="'+(i+1)+'" aria-label="Start with '+c[0].toLowerCase()+'"><span class="lb">Start with this</span><span class="dot"><svg aria-hidden="true"><use href="#i-arrow"/></svg></span></a><div class="art" aria-hidden="true">'+MK[i]+'</div></article>'}).join('');
+/* A card is "on" while the pointer is over it or the focus is inside it; on a touch screen, while most of it is in view. "run" stays a
+   little longer, so the parts that keep moving can come to rest. --k is told to the browser as a number so that it can ease. */
+try{CSS.registerProperty({name:'--k',syntax:'<number>',inherits:true,initialValue:'0'})}catch(e){}
+var capIO=null;
+if(!calm){
+  var capSet=function(c,v){clearTimeout(c._t);c.classList.toggle('on',v);if(v)c.classList.add('run');else c._t=setTimeout(function(){c.classList.remove('run')},700)};
+  $$('.cap').forEach(function(c){
+    c.addEventListener('pointerenter',function(e){if(e.pointerType!=='touch')capSet(c,true)});
+    c.addEventListener('pointerleave',function(e){if(e.pointerType!=='touch')capSet(c,false)});
+    c.addEventListener('focusin',function(){capSet(c,true)});
+    c.addEventListener('focusout',function(){capSet(c,false)});
+  });
+  if(window.matchMedia&&window.matchMedia('(hover:none)').matches&&'IntersectionObserver' in window){
+    /* on a touch screen a card comes alive once, when most of it is in view, and stays so: pulling it back as it leaves and bringing
+       it on again on every pass made scrolling stutter on slower phones. Only what loops (the sign swaying) stops while it is away */
+    capIO=new IntersectionObserver(function(en){en.forEach(function(e){var c=e.target;if(e.intersectionRatio>.6)c.classList.add('on','run');else if(e.intersectionRatio<.3)c.classList.remove('run')})},{threshold:[.25,.6,.9]});
+    $$('.cap').forEach(function(c){capIO.observe(c)});
+  }
+}
+
+
+/* The pricing banner answers the pointer: its colours lean toward it and a soft violet light follows it. to: where the values are
+   heading (how far left of the right edge and how far down the pointer is, 0 to 1 each; where it is, in %; 1 while it is over);
+   each frame they glide a little further, and the drawing stops once they have arrived. Not on touch, not with reduced motion */
+(function(){
+  var el=$('.pban');if(!el||calm||!window.matchMedia||!window.matchMedia('(hover:hover) and (pointer:fine)').matches)return;
+  var KEY=['--hx','--hy','--mx','--my','--hv'],cur=[0,0,70,40,0],to=[0,0,70,40,0],raf=0,last=0;
+  function step(t){
+    var k=1-Math.exp(-Math.min(60,t-(last||t))/150),busy=false;last=t;
+    for(var i=0;i<5;i++){var d=to[i]-cur[i];if(Math.abs(d)>.004){cur[i]+=d*(k||.1);busy=true}else cur[i]=to[i];el.style.setProperty(KEY[i],cur[i].toFixed(3)+(i===2||i===3?'%':''))}
+    raf=busy?requestAnimationFrame(step):0;
+  }
+  function go(){if(!raf){last=0;raf=requestAnimationFrame(step)}}
+  el.addEventListener('pointermove',function(e){
+    if(e.pointerType==='touch')return;
+    var b=el.getBoundingClientRect(),x=Math.max(0,Math.min(1,(e.clientX-b.left)/b.width)),y=Math.max(0,Math.min(1,(e.clientY-b.top)/b.height));
+    to[0]=1-x;to[1]=y;to[2]=x*100;to[3]=y*100;to[4]=1;go();
+  },{passive:true});
+  el.addEventListener('pointerleave',function(){to[0]=to[1]=to[4]=0;go()});
+})();
+
+/* ---------- Pricing: One-off or Monthly, then For realtors or For firms. One card per service: k name, p price, from:1 for a "from" price (its note then says extras are quoted first), d one line, inc what is included, svc the services ticked in the form. Add feat:1 to a plan to show it as the dark card. ---------- */
+var WHO=BBD.who||{realtor:'For realtors',firm:'For firms'};
+var PRICING=BBD.pricing||{
+ once:{label:'One-off',unit:'one-off',
+  realtor:{plans:[
+   {k:'Personal Brand Kit',p:'$1,999',d:'A complete personal brand, built from a ready-made BeBrand style and customised to you.',inc:['Name logo and monogram','Colour palette and fonts','Business card and email signature','Yard sign and sign rider','Social kit with 10 post templates','Listing flyer template','Brokerage and license details placed correctly','Ready in 7 to 10 business days'],svc:['Personal brand kit']},
+   {k:'Personal Website',p:'$2,999',from:1,d:'A custom site on your brand, approved as a live prototype before we build it.',inc:['Up to 10 pages','Featured listings','Contact, home valuation and showing forms','SEO basics and analytics set up','Brokerage, license and Equal Housing details','30 days of fixes after launch','Ready in 3 to 4 weeks once we have your content'],svc:['Custom website']}]},
+  firm:{plans:[
+   {k:'Brand Identity',p:'$3,999',d:'A full identity designed from scratch for your firm and every agent in it.',inc:['Positioning, tagline and tone of voice','3 logo concepts, then a full logo system','Stationery and signage','Flyer, brochure and presentation templates','Co-branded kit for every agent','Full brand guidelines','Ready in 4 to 6 weeks'],svc:['Logo and identity','Brand guidelines and stationery']},
+   {k:'Firm Website',p:'$7,999',from:1,d:'A custom firm site, approved as a live prototype before we build it.',inc:['Up to 15 pages','Agent roster with a profile page per agent','Featured listings','Lead forms routed to the right agent and your CRM','SEO basics and analytics set up','Staff training and 30 days of fixes after launch','Ready in 5 to 7 weeks once we have your content'],svc:['Custom website']}]}},
+ month:{label:'Monthly',unit:'/ month',
+  realtor:{plans:[
+   {k:'Social Content',p:'$899',from:1,d:'A month of content planned, designed, captioned and scheduled for you.',inc:['Monthly content plan to approve','12 designed posts','4 short videos from your footage','Captions and hashtags','Scheduled to 2 platforms','Monthly results snapshot'],svc:['Social media design']},
+   {k:'Marketing Design',p:'$699',from:1,d:'Flyers, postcards and listing materials designed on request, every month.',inc:['Up to 8 design requests','Listing flyers, brochures, postcards and signs','2 business days per request','2 rounds of revisions per item','Print-ready and digital files','Website Care included free: hosting, daily backups, security updates and up to 1 hour of content updates'],svc:['Flyers and marketing graphics','Presentations and pitch decks']}]},
+  firm:{plans:[
+   {k:'Social Content',p:'$2,499',from:1,d:'A month of content for the firm, with every listing post co-branded for its agent.',inc:['Monthly content plan and strategy call','24 designed posts','8 short videos from your footage','Listing posts co-branded for each agent','Scheduled to 4 platforms','Monthly report with recommendations'],svc:['Social media design']},
+   {k:'Marketing Design',p:'$1,699',from:1,d:'Design on request for the firm and its agents, every month.',inc:['Up to 20 design requests, shared across the team','Listing, recruiting and event materials','2 business days per request','One named designer and a shared request board','Checked against your brand guidelines','Website Care included free: hosting, daily backups, security updates and up to 4 hours of content updates'],svc:['Flyers and marketing graphics','Presentations and pitch decks']}]}}
+};
+var prState={bill:'once',who:'realtor'};
+function drawPricing(){
+  var b=prState.bill,w=prState.who,g=PRICING[b][w],box=$('#pcards');
+  box.classList.toggle('three',g.plans.length===3);
+  box.innerHTML=g.plans.map(function(pl){return '<article class="pc'+(pl.feat?' feat':'')+'"><div class="pc-top"><h3 class="pc-k">'+pl.k+'</h3><p>'+pl.d+'</p><div class="pc-price">'+(pl.from?'<span>from</span>':'')+'<b>'+pl.p+'</b><span>'+PRICING[b].unit+'</span></div><div class="pc-go"><a class="btn arrow" href="#start" data-plan="'+b+'|'+w+'|'+pl.k+'"><span class="lb">Start with this</span><span class="dot"><svg aria-hidden="true"><use href="#i-arrow"/></svg></span></a><span class="pc-n">'+(pl.from?'Extras quoted before work starts':'One fixed price')+'</span></div></div><div class="pc-inc"><span class="pc-l">What’s included</span><ul>'+pl.inc.filter(function(r){return r.indexOf('Ready in')!==0}).map(function(r){var c=r.indexOf(': '),d=c>0?r.slice(c+2):'';return '<li><svg aria-hidden="true"><use href="#i-check"/></svg><span>'+(c>0?'<b>'+r.slice(0,c)+'</b><small>'+d.charAt(0).toUpperCase()+d.slice(1)+'</small>':r)+'</span></li>'}).join('')+'</ul>'+pl.inc.filter(function(r){return r.indexOf('Ready in')===0}).map(function(r){return '<p class="pc-when"><svg aria-hidden="true"><use href="#i-clock"/></svg>'+r+'</p>'}).join('')+'</div></article>'}).join('');
+  $$('[data-bill]').forEach(function(x){x.setAttribute('aria-pressed',String(x.getAttribute('data-bill')===b))});
+  $('#billSw').setAttribute('aria-checked',String(b==='month'));
+  $$('[data-who]').forEach(function(x){x.setAttribute('aria-pressed',String(x.getAttribute('data-who')===w))});
+}
+document.addEventListener('click',function(e){
+  var x=e.target.closest?e.target.closest('[data-bill],[data-bill-flip],[data-who]'):null;if(!x)return;
+  if(x.hasAttribute('data-bill-flip'))prState.bill=prState.bill==='once'?'month':'once';
+  else if(x.hasAttribute('data-bill'))prState.bill=x.getAttribute('data-bill');else prState.who=x.getAttribute('data-who');
+  drawPricing();
+});
+drawPricing();
+
+/* ---------- FAQ rows ---------- */
+var FAQ=BBD.faq||[["Do you only work with real estate?", "Yes. Agents, teams, brokerages, developers and property managers. Working in one industry lets us start faster and get the details right, from signage sizes to brokerage co-branding rules."], ["Is BeBrand a real estate brokerage?", "No. BeBrand is a digital agency. We do not list, sell or manage property. We design the brand, the marketing and the website for the people who do."], ["What does it cost?", "One-off projects start at $1,999 and monthly plans at $699; every price is in the pricing section. Anything beyond what a package lists is quoted as a fixed price before work starts, so there are no hourly surprises."], ["How does onboarding work?", "It is two short steps online: who you are, then what you need, with your budget and timeline. We reply by email, and a kickoff call comes next."], ["How long does a project take?", "It depends on scope. A personal brand kit is quick; a full firm identity with a website takes longer. You get a timeline in writing before we start, and we keep to it."], ["Can you work within my brokerage's brand rules?", "Yes. Most agent brands have to sit beside a brokerage logo and follow its guidelines. We design for that from the first sketch. Send us the rules when we start."], ["What do I receive at the end?", "All final files in print and screen formats, the editable source files, your brand guidelines, font licenses and the logins for anything we set up for you."], ["Can I mix services from different packages?", "Yes. During onboarding you can tick any of the seven services, whichever package you start from."], ["I'm a new agent. Is it too early for a brand?", "No. A clear personal brand helps most at the start, when you have fewer closed deals to point to. The personal brand kit is built for exactly this stage."], ["Do you build the website as well?", "Yes. We design it, show it to you as a live prototype, then build it with listings, lead capture and a CMS you can update yourself."], ["Who will I be working with?", "The designers you meet on the first call. Nothing is handed down to someone you have never spoken to."]];
+$$('.fq-list').forEach(function(el){el.innerHTML=FAQ.map(function(f,i){return '<details class="fq"><summary><span class="fq-n">'+(i<9?'0':'')+(i+1)+'</span><span>'+f[0]+'</span><span class="fq-p"><svg aria-hidden="true"><use href="#i-plus"/></svg></span></summary><p class="fq-a">'+f[1]+'</p></details>'}).join('')});
+
+/* ---------- Reviews (placeholders until real client reviews, results and photos are supplied) ---------- */
+/* Reviews are still placeholders. s is the star rating out of 5: set it to what each client actually gave when the real reviews go in.
+   The picture area shows a plain person shape until each client's own photo is added; no stock faces stand in for clients.
+   A review with v is a video review: v is the address of the client's video file (mp4 or webm), and '' keeps the slot as a video
+   review until the file is added. p is an optional photo of the client, also shown as the still before a video plays. */
+var REVIEWS=BBD.reviews||[
+ {s:5,q:'A video review goes here. For the quote, use one line the client says in the video.',n:'Client name',r:'Agent, brokerage',c:'#FFC9DF',v:''},
+ {s:5,q:'A written review goes here. A team or brokerage client works well in this slot.',n:'Client name',r:'Team lead, brokerage',c:'#CEC4F9'},
+ {s:5,q:"A client's video review goes here, with one line from it in the client's own words.",n:'Client name',r:'Agent, brokerage',c:'#CFE4FB',v:''},
+ {s:5,q:'Another written review goes here. Pick one that mentions the website or the onboarding.',n:'Client name',r:'Broker, firm',c:'#B6EEC9'},
+ {s:5,q:'A third video review goes here. A short clip is fine.',n:'Client name',r:'Developer, firm',c:'#FFD5AD',v:''}
+],rvI=2;
+/* The open card always sits in the middle slot, with a tall strip and a short strip on each side. Choosing a strip turns the row so that card comes to the middle. */
+function rvStars(n){var o='';for(var k=1;k<=5;k++)o+='<svg'+(k>n?' class="off"':'')+' aria-hidden="true"><use href="#i-star"/></svg>';return o}
+function rvMedia(r){
+  var o='<i class="rvc-ph" aria-hidden="true"></i>';
+  if(r.p)o+='<img class="rvc-pic" src="'+esc(r.p)+'" alt="" loading="lazy" decoding="async">';
+  if(r.v===undefined)return o;
+  if(r.v)o+='<video class="rvc-v" playsinline preload="none"'+(r.p?' poster="'+esc(r.p)+'"':'')+'></video>';
+  return o+'<button class="rvc-play" type="button" tabindex="-1" aria-label="Play the video review from '+esc(r.n)+'"><svg aria-hidden="true"><use href="#i-play"/></svg></button><span class="rvc-chip" aria-hidden="true"><svg><use href="#i-play"/></svg><b>Video review</b></span><button class="rvc-x" type="button" tabindex="-1" aria-label="Close the video"><svg aria-hidden="true"><use href="#i-plus"/></svg></button><span class="rvc-note" role="status"></span>';
+}
+var rvx=$('#rvx'),rvN=REVIEWS.length,rvAuto=!calm,rvSeen=false,rvHold=false,rvTimer=null,rvX=null,rvVid=null,rvMq=window.matchMedia('(max-width:900px)');
+rvx.innerHTML=REVIEWS.map(function(r,i){return '<div class="rvc'+(r.v===undefined?'':' vid')+'" role="button" tabindex="0" data-i="'+i+'" style="--pc:'+r.c+'"><div class="rvc-in"><div class="rvc-txt"><p class="rvc-stars" role="img" aria-label="'+r.s+' out of 5 stars">'+rvStars(r.s)+'</p><div><blockquote class="rvc-q">\u201C'+esc(r.q)+'\u201D</blockquote><p class="rvc-who"><span class="rvc-tag">'+esc(r.n)+'</span><span class="rvc-tag">'+esc(r.r)+'</span></p></div></div><div class="rvc-img">'+rvMedia(r)+'</div></div></div>'}).join('');
+var rvCards=$$('.rvc',rvx);
+/* moves on every 5 seconds while it is on screen; waits while the pointer or keyboard focus is on it, and starts counting again after a choice */
+function rvTick(){clearTimeout(rvTimer);if(rvAuto&&rvSeen&&!rvHold&&!rvVid)rvTimer=setTimeout(function(){rvShow(rvI+1)},5000)}
+/* ---- video reviews ---- */
+function rvFmt(t){t=Math.round(t);return Math.floor(t/60)+':'+('0'+t%60).slice(-2)}
+function rvSay(c,t){var n=$('.rvc-note',c);n.textContent=t;n.classList.add('show');clearTimeout(n.rvT);n.rvT=setTimeout(function(){n.classList.remove('show')},4200)}
+/* a video is fetched only once the row is near the screen, and then only its first frame and length until it is played */
+function rvLoad(c){
+  var v=$('.rvc-v',c);if(!v||v.getAttribute('src'))return;
+  var u=REVIEWS[+c.getAttribute('data-i')].v;v.preload='metadata';v.src=u+(u.indexOf('#')<0?'#t=0.1':'');
+}
+/* on a phone the picture area takes the open video's own shape, up to most of the screen's height */
+function rvSize(){
+  var c=rvVid;if(!c)return 0;
+  var im=$('.rvc-img',c),v=$('.rvc-v',c),h=rvMq.matches&&v.videoWidth?Math.round(Math.min(im.clientWidth*v.videoHeight/v.videoWidth,window.innerHeight*.72)):0;
+  im.style.height=h?h+'px':'';
+  return h||im.offsetHeight;
+}
+/* the open video is brought fully on screen if it is not: clear of the bar at the top and, on a phone, of the floating button at the foot */
+function rvView(h){
+  var t=$('.rvc-img',rvVid).getBoundingClientRect().top,a=(nav?nav.offsetHeight:60)+12,b=window.innerHeight-(rvMq.matches?96:20),d=0;
+  if(t+h>b)d=t+h-b;
+  if(t-d<a)d=t-a;
+  if(Math.abs(d)>2)window.scrollBy({top:Math.round(d),left:0,behavior:calm?'instant':'smooth'});
+}
+function rvPlay(c){
+  var v=$('.rvc-v',c);
+  if(!v){rvSay(c,'This client’s video will play here once it is added.');return}
+  var key=c.contains(document.activeElement);
+  rvLoad(c);rvVid=c;c.classList.add('play');v.controls=true;rvView(rvSize());
+  var p=v.play();if(p&&p.catch)p.catch(function(){});
+  if(key)v.focus({preventScroll:true});
+  rvTick();
+}
+function rvStop(){
+  var c=rvVid;if(!c)return;rvVid=null;
+  var v=$('.rvc-v',c),back=c.contains(document.activeElement);
+  v.pause();v.controls=false;try{v.currentTime=.1}catch(e){}
+  c.classList.remove('play');$('.rvc-img',c).style.height='';
+  if(back)$('.rvc-play',c).focus({preventScroll:true});
+  rvTick();
+}
+function rvShow(i){
+  rvI=(i+rvN)%rvN;
+  if(rvVid&&rvVid!==rvCards[rvI])rvStop();
+  var jump=[];
+  rvCards.forEach(function(c,k){
+    var sl=((k-rvI+2)%rvN+rvN)%rvN,was=c.rvSlot,on=sl===2;
+    if(was!==undefined&&Math.abs(sl-was)>2){c.classList.add('tele');jump.push(c)}
+    for(var j=0;j<5;j++)c.classList.toggle('s'+j,j===sl);
+    c.rvSlot=sl;
+    c.classList.toggle('on',on);c.setAttribute('role',on?'group':'button');if(on)c.removeAttribute('aria-pressed');else c.setAttribute('aria-pressed','false');
+    c.setAttribute('aria-label',on?'Review '+(k+1)+' of '+rvN:'Show review '+(k+1)+' of '+rvN+(c.classList.contains('vid')?', a video review':''));
+    /* on a strip the play button is only a sign that the review is a video: the strip itself is the button */
+    $$('.rvc-play,.rvc-x',c).forEach(function(b){b.tabIndex=on?0:-1;if(on)b.removeAttribute('aria-hidden');else b.setAttribute('aria-hidden','true')});
+  });
+  if(jump.length){void rvx.offsetWidth;jump.forEach(function(c){c.classList.remove('tele')})}
+  rvTick();
+}
+function rvPick(i){rvShow(i)}
+rvx.addEventListener('mouseenter',function(){rvHold=true;rvTick()});
+rvx.addEventListener('mouseleave',function(){rvHold=false;rvTick()});
+rvx.addEventListener('focusin',function(){rvHold=true;rvTick()});
+rvx.addEventListener('focusout',function(){rvHold=false;rvTick()});
+rvx.addEventListener('click',function(e){
+  var c=e.target.closest('.rvc');if(!c)return;
+  if(!c.classList.contains('on'))rvPick(+c.getAttribute('data-i'));
+  else if(e.target.closest('.rvc-play'))rvPlay(c);
+  else if(e.target.closest('.rvc-x'))rvStop();
+});
+rvx.addEventListener('keydown',function(e){
+  var c=e.target.closest('.rvc');if(!c||e.target.closest('.rvc-img'))return;
+  var i=+c.getAttribute('data-i'),d=e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0;
+  if(e.key==='Enter'||e.key===' '){e.preventDefault();rvPick(i)}
+  else if(d){e.preventDefault();rvPick(rvI+d);rvCards[rvI].focus()}
+});
+rvx.addEventListener('pointerdown',function(e){rvX=e.pointerType==='mouse'||e.target.closest('.rvc.play .rvc-img')?null:e.clientX});
+rvx.addEventListener('pointerup',function(e){if(rvX===null)return;var dx=e.clientX-rvX;rvX=null;if(Math.abs(dx)>48)rvPick(rvI+(dx<0?1:-1))});
+rvx.addEventListener('pointercancel',function(){rvX=null});
+rvCards.forEach(function(c){
+  var v=$('.rvc-v',c);if(!v)return;
+  v.addEventListener('loadedmetadata',function(){
+    c.classList.add('has');c.classList.toggle('wide',v.videoWidth>=v.videoHeight);
+    if(isFinite(v.duration)&&v.duration>0)$('.rvc-chip b',c).textContent='Video review · '+rvFmt(v.duration);
+    if(rvVid===c)rvView(rvSize());
+  });
+  v.addEventListener('ended',function(){rvStop()});
+  v.addEventListener('error',function(){if(!v.getAttribute('src'))return;c.classList.remove('has');if(rvVid===c)rvStop();rvSay(c,'This video could not be loaded.')});
+});
+rvShow(rvI);
+/* a playing video pauses when the row leaves the screen */
+if('IntersectionObserver' in window){
+  new IntersectionObserver(function(en){rvSeen=en[0].isIntersecting;if(!rvSeen&&rvVid)$('.rvc-v',rvVid).pause();rvTick()},{threshold:.4}).observe(rvx);
+  new IntersectionObserver(function(en,o){if(en[0].isIntersecting){o.disconnect();rvCards.forEach(rvLoad)}},{rootMargin:'600px 0px'}).observe(rvx);
+}else{rvSeen=true;rvCards.forEach(rvLoad);rvTick()}
+window.addEventListener('resize',rvSize);
+
+/* ---------- Nav + router ---------- */
+var nav=$('#nav'),menuBtn=$('#menuBtn'),menu=$('#mobileMenu'),dock=$('#dock'),startSec=$('#start'),lastY=window.scrollY;
+/* Scrolling down hides the top bar and brings up the bottom bar; scrolling up does the reverse. While the onboarding form fills the screen the top bar stays and the bottom bar keeps out of the way. */
+var footEl=$('.footer');
+/* the top bar is clear over the hero photo only at the very top of the page and with the phone menu closed */
+function setTop(){nav.classList.toggle('top',window.scrollY<=40&&menu.hidden)}
+function onScroll(){
+  var y=window.scrollY,r=startSec.getBoundingClientRect(),inForm=r.top<window.innerHeight*.55&&r.bottom>window.innerHeight*.45;
+  nav.classList.toggle('scrolled',y>40);setTop();
+  if(Math.abs(y-lastY)<6&&!inForm)return;
+  var down=y>lastY&&y>160&&!inForm;
+  lastY=y;
+  dock.classList.toggle('show',down&&footEl.getBoundingClientRect().top>window.innerHeight*.8);
+  nav.classList.toggle('away',down);
+  if(down&&!menu.hidden)closeMenu();
+}
+window.addEventListener('scroll',onScroll,{passive:true});onScroll();
+
+/* ---------- Keeping your place when the width changes ----------
+   Dragging the window's edge or turning a phone reflows the page, and what was being read would slide away (the browser's own scroll
+   anchoring gives up here, because the paddings follow the width). So the page notes what sits on a line a third of the way down the
+   window (which block, and how far down that block the line falls) and, when the width changes, puts that spot back on the line. */
+var KEEP='.cap,.pc,.fq,.cmp tr,.pstep.on,.rvx,.pban,.ob-card,.ob-rail,.arch-copy,.proof,.sh,.arc-row,.ft-top,.ft-bar,section,.footer';
+var keepAt=null,keepW=window.innerWidth,keepT=0,keepHold=0;
+function keepNote(){
+  keepT=0;if(performance.now()<keepHold)return;   /* the width is still changing: the block already chosen stays the one */
+  keepAt=null;if(window.scrollY<8)return;
+  var y=Math.round(window.innerHeight/3),x=window.innerWidth/2,best=null,bh=1e9,near=null,nd=1e9;
+  $$(KEEP).forEach(function(e){
+    var r=e.getBoundingClientRect();if(r.height<1||r.width<1)return;
+    /* of the blocks the line runs through, the smallest; one in the middle of the window before one off to a side */
+    if(r.top<=y&&r.bottom>y){var h=r.height+(r.left<=x&&r.right>=x?0:1e6);if(h<bh){bh=h;best=e}}
+    else if(r.top>y&&r.top-y<nd){nd=r.top-y;near=e}
+  });
+  var el=best||near;if(!el)return;
+  var b=el.getBoundingClientRect();keepAt={el:el,f:(y-b.top)/b.height};
+}
+function keepPut(){
+  var a=keepAt;if(!a||!a.el.isConnected)return;
+  keepHold=performance.now()+400;
+  var b=a.el.getBoundingClientRect();if(b.height<1)return;
+  var d=Math.round(b.top+a.f*b.height-window.innerHeight/3);
+  if(Math.abs(d)>1)window.scrollBy({top:d,left:0,behavior:'instant'});
+}
+window.addEventListener('scroll',function(){if(!keepT)keepT=requestAnimationFrame(keepNote)},{passive:true});
+window.addEventListener('resize',function(){var w=window.innerWidth;if(w===keepW)return;keepW=w;keepPut()});
+function closeMenu(){menu.hidden=true;menuBtn.setAttribute('aria-expanded','false');menuBtn.setAttribute('aria-label','Open menu');setTop()}
+menuBtn.addEventListener('click',function(){var open=menu.hidden;menu.hidden=!open;menuBtn.setAttribute('aria-expanded',String(open));menuBtn.setAttribute('aria-label',open?'Close menu':'Open menu');setTop()});
+
+/* One page: links scroll to their section. "#call" opens the booking dialog; any other in-page link closes it first. */
+var callDlg=$('#callDlg');
+function openCall(){
+  if(callDlg.open)return;
+  var cf=$('#callForm'),cd=$('#callDone');if(cf.hidden){cd.hidden=true;cf.hidden=false}
+  if(callDlg.showModal)callDlg.showModal();else callDlg.setAttribute('open','');
+}
+function closeCall(){if(!callDlg.open)return;if(callDlg.close)callDlg.close();else callDlg.removeAttribute('open')}
+$('#callX').addEventListener('click',closeCall);
+/* a click on the dimmed area lands on the dialog element itself, not on its content */
+callDlg.addEventListener('click',function(e){
+  if(e.target!==callDlg)return;
+  var r=callDlg.getBoundingClientRect();
+  if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeCall();
+});
+function jump(id,instant){
+  var how=instant||calm?'auto':'smooth';
+  if(id==='call'){openCall();return}
+  closeCall();
+  if(id==='home'){window.scrollTo({top:0,behavior:how});return}
+  var el=document.getElementById(id);if(el)el.scrollIntoView({behavior:how,block:'start'});
+}
+document.addEventListener('click',function(e){
+  var a=e.target.closest?e.target.closest('a[href^="#"]'):null;if(!a)return;
+  var id=a.getAttribute('href').slice(1);if(!id)return;
+  e.preventDefault();
+  var pl=a.getAttribute('data-plan');if(pl!==null)pickPlan(pl);
+  var sv=a.getAttribute('data-svc'),sc=sv!==null&&$('#ob-s'+sv);if(sc){sc.checked=true;save()}
+  closeMenu();jump(id);
+});
+
+/* ---------- How it works: four tabs and one card. A tab (or the arrow keys, Home and End along the row) chooses the step on
+   show. While things may move, the steps play through by themselves: the bar in the active tab fills over 7 seconds and the next step
+   follows when it is full. That pauses while the pointer or focus is on the section or the section is off screen, and stops for good
+   once a tab is chosen. ---------- */
+var howIO=null;
+(function(){
+  var proc=$('#proc');if(!proc)return;
+  var row=$('.ptabs',proc),tabs=$$('.ptab',proc),steps=$$('.pstep',proc),N=tabs.length,cur=0;
+  if(!row||!N)return;
+  function show(k,focus){
+    cur=(k%N+N)%N;
+    tabs.forEach(function(t,i){var on=i===cur;t.classList.toggle('on',on);t.setAttribute('aria-selected',on?'true':'false');t.tabIndex=on?0:-1});
+    steps.forEach(function(s,i){s.classList.toggle('on',i===cur)});
+    row.style.setProperty('--ti',cur);proc.setAttribute('data-s',cur+1);
+    if(focus)tabs[cur].focus();
+  }
+  tabs.forEach(function(t,i){t.addEventListener('click',function(){proc.classList.remove('auto');show(i)})});
+  row.addEventListener('keydown',function(e){
+    var k=e.key==='ArrowRight'?cur+1:e.key==='ArrowLeft'?cur-1:e.key==='Home'?0:e.key==='End'?N-1:-9;
+    if(k===-9)return;e.preventDefault();proc.classList.remove('auto');show(k,true);
+  });
+  proc.classList.add('is-live');
+  show(0);
+  if(calm)return;
+  proc.classList.add('moving','auto');
+  row.addEventListener('animationend',function(e){if(e.animationName==='h-prog'&&proc.classList.contains('auto'))show(cur+1)});
+  if('IntersectionObserver' in window){proc.classList.add('away');howIO=new IntersectionObserver(function(en){proc.classList.toggle('away',!en[0].isIntersecting)},{rootMargin:'-18% 0px'});howIO.observe(proc)}
+})();
+
+/* ---------- Sending (WordPress) ----------
+   The project brief and the call request go to the site, which saves them and emails them on.
+   One request at a time; "website" is a field no person fills in, and "ms" is how long the page has been open. */
+var BB_API={{BB_API}},bbT0=Date.now(),bbBusy=false;
+function bbSend(kind,data,text,ok,fail){
+  if(bbBusy)return;bbBusy=true;
+  var tz='';try{tz=Intl.DateTimeFormat().resolvedOptions().timeZone||''}catch(e){}
+  var x=new XMLHttpRequest();
+  x.open('POST',BB_API,true);
+  x.setRequestHeader('Content-Type','application/json');
+  x.onreadystatechange=function(){
+    if(x.readyState!==4)return;bbBusy=false;
+    var r=null;try{r=JSON.parse(x.responseText)}catch(e){}
+    if(x.status>=200&&x.status<300&&r&&r.ok)ok();else fail(r&&r.message?r.message:'');
+  };
+  x.send(JSON.stringify({kind:kind,data:data,text:text,tz:tz,ms:Date.now()-bbT0,website:''}));
+}
+
+/* ---------- Onboarding ---------- */
+var form=$('#obForm'),panes=$$('.pane',form),rail=$$('#obRail li'),step=1,reached=1;
+var errEl=$('#obErr'),KEY='bebrand-onboarding-draft';
+function findPlan(id){var a=(id||'').split('|'),g=PRICING[a[0]]&&PRICING[a[0]][a[1]];return g?g.plans.filter(function(x){return x.k===a[2]})[0]||null:null}
+function planLabel(id){var a=(id||'').split('|');return findPlan(id)?PRICING[a[0]].label+', '+WHO[a[1]].toLowerCase()+': '+a[2]:''}
+function applyPlan(id){var pl=findPlan(id);if(!pl)return;$$('input[name=svc]',form).forEach(function(c){c.checked=pl.svc.indexOf(c.value)>=0})}
+function pickPlan(id){$('#ob-plan').value=id;applyPlan(id);save()}
+(function(){var h='<option value="">Not sure yet, help me choose</option>';['once','month'].forEach(function(b){['realtor','firm'].forEach(function(w){h+='<optgroup label="'+PRICING[b].label+' · '+WHO[w]+'">'+PRICING[b][w].plans.map(function(pl){return '<option value="'+b+'|'+w+'|'+pl.k+'">'+pl.k+'</option>'}).join('')+'</optgroup>'})});$('#ob-plan').innerHTML=h})();
+function collect(){
+  var d={};
+  [].forEach.call(form.elements,function(el){
+    if(!el.name||el.type==='file'||el.type==='submit'||el.type==='button')return;
+    if(el.type==='radio'){if(el.checked)d[el.name]=el.value}
+    else if(el.type==='checkbox'){d[el.name]=d[el.name]||[];if(el.checked)d[el.name].push(el.value)}
+    else d[el.name]=el.value.trim();
+  });
+  return d;
+}
+function restore(d){
+  if(!d)return;
+  [].forEach.call(form.elements,function(el){
+    if(!el.name||el.type==='file'||!(el.name in d))return;
+    var v=d[el.name];
+    if(el.type==='radio')el.checked=v===el.value;
+    else if(el.type==='checkbox')el.checked=Array.isArray(v)&&v.indexOf(el.value)>=0;
+    else el.value=v;
+  });
+}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(collect()))}catch(e){}}
+try{restore(JSON.parse(localStorage.getItem(KEY)||'null'))}catch(e){}
+
+function showErr(m){errEl.textContent=m;errEl.hidden=false}
+function hideErr(){errEl.hidden=true}
+function go(n,quiet){
+  step=n;if(n>reached)reached=n;hideErr();
+  panes.forEach(function(p){p.hidden=+p.getAttribute('data-step')!==n});
+  rail.forEach(function(li,i){li.classList.toggle('cur',i+1===n);li.classList.toggle('done',i+1<n);if(i+1===n)li.firstElementChild.setAttribute('aria-current','step');else li.firstElementChild.removeAttribute('aria-current')});
+  $('#obBack').hidden=n!==2;
+  $('#obFoot').hidden=n===3;
+  $('#obNextL').textContent=n===2?'Send my brief':'Continue';
+  if(!quiet){var y=form.getBoundingClientRect().top+window.scrollY-96;window.scrollTo(0,Math.max(0,y))}
+}
+function validate(n){
+  var d=collect();
+  if(n===1){
+    if(!d.name)return ['Add your name so we know who to reply to.','#ob-name'];
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email||''))return ['Add a valid email so we can reply.','#ob-email'];
+    if(!d.role)return ['Choose the option that describes you.','#ob-role1'];
+    if(!d.market)return ['Add the city and state you work in.','#ob-market'];
+  }
+  if(n===2&&!(d.svc||[]).length)return ['Pick a package or at least one service.','#ob-plan'];
+  return null;
+}
+function groups(){
+  var d=collect();
+  return [
+    ['About you',[d.name,d.email,d.phone,d.role,d.company,d.market]],
+    ['Your needs',[planLabel(d.plan),(d.svc||[]).join(', '),d.budget?'Budget: '+d.budget:'',d.start?'Start: '+d.start:'',d.deadline?'Deadline: '+d.deadline:'',d.notes]]
+  ].map(function(g){g[1]=g[1].filter(Boolean);return g});
+}
+function briefText(){
+  var lines=['Project brief for BeBrand',''];
+  groups().forEach(function(g){lines.push(g[0].toUpperCase());(g[1].length?g[1]:['Nothing added']).forEach(function(x){lines.push('- '+x)});lines.push('')});
+  return lines.join('\n');
+}
+function finish(){
+  var d=collect(),first=esc((d.name||'').split(' ')[0]);
+  $('#obDone').innerHTML='<span class="ok"><svg aria-hidden="true"><use href="#i-check"/></svg></span><h2>You\'re in'+(first?', '+first:'')+'.</h2>'+
+    '<ol class="nexts"><li>We read your brief and reply by email with next steps.</li><li>Next is a 30-minute kickoff call. Pick a time now if you like.</li><li>After the call you get a written scope, a fixed price and a timeline.</li></ol>'+
+    '<p class="pvnote">Your brief has been sent. We reply by email.</p>'+
+    '<div class="acts"><a class="btn arrow" href="#call"><span class="lb">Book the kickoff call</span><span class="dot"><svg aria-hidden="true"><use href="#i-arrow"/></svg></span></a><button type="button" class="btn ghost" id="copyBrief"><span>Copy my brief</span></button></div>'+
+    '<details id="briefBox"><summary>View the brief as text</summary><textarea id="briefText" readonly aria-label="Your project brief">'+esc(briefText())+'</textarea></details>';
+  go(3);
+}
+function next(){
+  var bad=validate(step);
+  if(bad){showErr(bad[0]);if(bad[1]){var el=$(bad[1]);if(el)el.focus()}return}
+  if(step===2){
+    var lb=$('#obNextL'),was=lb.textContent;lb.textContent='Sending\u2026';
+    bbSend('brief',collect(),briefText(),function(){lb.textContent=was;try{localStorage.removeItem(KEY)}catch(e){}finish()},function(m){lb.textContent=was;showErr(m||'We could not send your brief. Check your connection and try again, or email hello@bbrand.com.')});
+    return;
+  }
+  go(step+1);
+}
+form.addEventListener('submit',function(e){e.preventDefault();next()});
+$('#obBack').addEventListener('click',function(){if(step===2)go(1)});
+rail.forEach(function(li,i){li.firstElementChild.addEventListener('click',function(){if(step<=2&&i+1<step)go(i+1)})});
+form.addEventListener('click',function(e){
+  var c=e.target.closest('#copyBrief');if(!c)return;
+  var t=$('#briefText'),done=function(){c.firstElementChild.textContent='Copied'},fb=function(){$('#briefBox').open=true;t.focus();t.select()};
+  try{navigator.clipboard.writeText(t.value).then(done,fb)}catch(err){fb()}
+});
+form.addEventListener('change',function(e){
+  hideErr();
+  if(e.target.name==='plan')applyPlan(e.target.value);
+  save();
+});
+form.addEventListener('input',save);
+
+/* ---------- Time slots ---------- */
+function mountSlots(dEl,tEl,store){
+  var days=[],d=new Date();
+  while(days.length<5){d=new Date(d.getTime()+864e5);var w=d.getDay();if(w!==0&&w!==6)days.push(d.toLocaleDateString('en-US',{weekday:'short',day:'numeric',month:'short'}))}
+  function draw(el,list,key){
+    el.innerHTML=list.map(function(x){return '<button type="button" class="slot" aria-pressed="false">'+x+'</button>'}).join('');
+    el.addEventListener('click',function(e){var b=e.target.closest('.slot');if(!b)return;$$('.slot',el).forEach(function(s){var on=s===b;s.classList.toggle('on',on);s.setAttribute('aria-pressed',String(on))});store[key]=b.textContent});
+  }
+  draw(dEl,days,'day');draw(tEl,['9:00 AM','11:00 AM','2:00 PM','4:00 PM'],'time');
+}
+var cslot={};mountSlots($('#cDays'),$('#cTimes'),cslot);
+var callForm=$('#callForm'),callErr=$('#callErr');
+callForm.addEventListener('submit',function(e){
+  e.preventDefault();
+  var n=callForm.cname.value.trim(),m=callForm.cemail.value.trim(),msg='';
+  if(!n)msg='Add your name.';else if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m))msg='Add a valid email so we can confirm.';else if(!(cslot.day&&cslot.time))msg='Pick a day and a time.';
+  if(msg){callErr.textContent=msg;callErr.hidden=false;return}
+  callErr.hidden=true;
+  var cl=$('button[type=submit] .lb',callForm),cw=cl.textContent;cl.textContent='Sending\u2026';
+  bbSend('call',{name:n,email:m,day:cslot.day,time:cslot.time},'Call request for BeBrand\n\n- '+n+'\n- '+m+'\n- '+cslot.day+' at '+cslot.time,function(){
+    cl.textContent=cw;callForm.hidden=true;
+    $('#callDoneH').textContent=cslot.day+' at '+cslot.time;
+    $('#callDone').hidden=false;
+  },function(msg){cl.textContent=cw;callErr.textContent=msg||'We could not send your request. Check your connection and try again, or email hello@bbrand.com.';callErr.hidden=false});
+});
+
+go(1,true);
+if(location.hash.length>1)jump(location.hash.slice(1),true);
+};
+(function(){
+var live=[],seen=null;
+function run(){
+  live.forEach(function(l){l[0].removeEventListener(l[1],l[2],l[3])});live=[];
+  window.bbGen=(window.bbGen||0)+1;
+  var wa=window.addEventListener,da=document.addEventListener;
+  window.addEventListener=function(t,f,o){live.push([window,t,f,o]);return wa.call(window,t,f,o)};
+  document.addEventListener=function(t,f,o){live.push([document,t,f,o]);return da.call(document,t,f,o)};
+  try{window.bbBoot()}catch(e){if(window.console)console.error('BeBrand site',e)}
+  delete window.addEventListener;delete document.addEventListener;
+}
+function look(){var nav=document.getElementById('nav');if(nav&&nav!==seen&&document.getElementById('dock')){seen=nav;run()}}
+new MutationObserver(look).observe(document.documentElement,{childList:true,subtree:true});
+look();
+})();

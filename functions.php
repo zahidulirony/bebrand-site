@@ -9,7 +9,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'BEBRAND_VERSION', '1.1.0-54b334a6' );
+define( 'BEBRAND_VERSION', '1.2.0-f2a30041' );
 define( 'BEBRAND_LANDING', 'templates/landing.php' );
 define( 'BEBRAND_FONTS', 'https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400..700&family=Outfit:wght@400;500;600&display=swap' );
 
@@ -59,10 +59,12 @@ function bebrand_editor_extras() {
 	wp_add_inline_script( 'bebrand-editor', $js );
 }
 
-/** True on a page shown with the landing template. */
+/** True on a page shown with the landing template, or with the same design fed from the Elementor element. */
 function bebrand_is_landing() {
-	return is_page() && BEBRAND_LANDING === get_page_template_slug( get_queried_object_id() );
+	return is_page() && in_array( get_page_template_slug( get_queried_object_id() ), array( BEBRAND_LANDING, BEBRAND_SITE_TEMPLATE ), true );
 }
+
+require_once get_template_directory() . '/inc/site.php';
 
 add_action(
 	'wp_enqueue_scripts',
@@ -71,6 +73,14 @@ add_action(
 			// The landing page brings its whole design with it: WordPress's own block styles stay out of it.
 			foreach ( array( 'wp-block-library', 'wp-block-library-theme', 'classic-theme-styles', 'global-styles' ) as $handle ) {
 				wp_dequeue_style( $handle );
+			}
+			if ( bebrand_is_site_page() && ! bebrand_site_in_editor() ) {
+				// The public page is built by the theme from the element's fields: Elementor's own styles have nothing to style on it.
+				foreach ( wp_styles()->queue as $handle ) {
+					if ( preg_match( '/^(elementor|e-|widget-|swiper|font-awesome|fontawesome)/', $handle ) ) {
+						wp_dequeue_style( $handle );
+					}
+				}
 			}
 			return;
 		}

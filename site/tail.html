@@ -1,6 +1,7 @@
 <script>
 (function(){
 'use strict';
+var BBD=(function(){var d=document.getElementById('bb-data');try{return d?JSON.parse(d.textContent):{}}catch(e){return {}}})();
 var $=function(s,r){return (r||document).querySelector(s)};
 var $$=function(s,r){return [].slice.call((r||document).querySelectorAll(s))};
 var calm=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -264,7 +265,7 @@ if(!sky&&$('.hero'))$('.hero').classList.add('flat');
 /* Photo strip: twelve photographs (img/w-1.jpg … w-12.jpg; sources in make_work_backgrounds.py) fill the two scrolling rows
    and the closing ring. They are stock pictures of homes and rooms, not projects, so nothing here labels them as work.
    The letter is the pastel shown while a photo loads. */
-var WORK='cbcdcaabdcba'.split('').map(function(bg,i){return {bg:bg,v:'<img class="viz-bg" src="{{BB_ASSETS}}img/w-'+(i+1)+'.jpg" alt="" loading="lazy" decoding="async">'}});
+var WORK='cbcdcaabdcba'.split('').map(function(bg,i){return {bg:bg,v:'<img class="viz-bg" src="'+((BBD.work&&BBD.work[i])||'{{BB_ASSETS}}img/w-'+(i+1)+'.jpg')+'" alt="" loading="lazy" decoding="async">'}});
 function tileRow(list){var out='';for(var k=0;k<2;k++)out+=list.map(function(w){return '<li'+(k?' class="dup"':'')+'><div class="tile"><div class="viz '+w.bg+'">'+w.v+'</div></div></li>'}).join('');return out}
 $('#arcTop').innerHTML=tileRow(WORK.slice(0,6));
 $('#arcBot').innerHTML=tileRow(WORK.slice(6));
@@ -333,7 +334,7 @@ if('IntersectionObserver' in window)['#work','.arch'].forEach(function(sel){
 
 /* Services: title and one line each. MK holds their mockups in the same order: plain HTML written out by the generator kept with
    the project (mock.py) and styled in the stylesheet ("the mockups"). @wN@ in them stands for the address of listing photo N. */
-var CAPS=[
+var CAPS=BBD.caps||[
  ['Logo design and identity','A logo, colours and type that look right on a yard sign, a business card and a listing.'],
  ['Brand guidelines and stationery','Simple rules for your logo, colours and type, with business cards and stationery to match.'],
  ['Personal brand kit','Your name, headshot and style turned into a kit you can use on every listing and post.'],
@@ -394,8 +395,8 @@ if(!calm){
 })();
 
 /* ---------- Pricing: One-off or Monthly, then For realtors or For firms. One card per service: k name, p price, from:1 for a "from" price (its note then says extras are quoted first), d one line, inc what is included, svc the services ticked in the form. Add feat:1 to a plan to show it as the dark card. ---------- */
-var WHO={realtor:'For realtors',firm:'For firms'};
-var PRICING={
+var WHO=BBD.who||{realtor:'For realtors',firm:'For firms'};
+var PRICING=BBD.pricing||{
  once:{label:'One-off',unit:'one-off',
   realtor:{plans:[
    {k:'Personal Brand Kit',p:'$1,999',d:'A complete personal brand, built from a ready-made BeBrand style and customised to you.',inc:['Name logo and monogram','Colour palette and fonts','Business card and email signature','Yard sign and sign rider','Social kit with 10 post templates','Listing flyer template','Brokerage and license details placed correctly','Ready in 7 to 10 business days'],svc:['Personal brand kit']},
@@ -429,7 +430,7 @@ document.addEventListener('click',function(e){
 drawPricing();
 
 /* ---------- FAQ rows ---------- */
-var FAQ=[["Do you only work with real estate?", "Yes. Agents, teams, brokerages, developers and property managers. Working in one industry lets us start faster and get the details right, from signage sizes to brokerage co-branding rules."], ["Is BeBrand a real estate brokerage?", "No. BeBrand is a digital agency. We do not list, sell or manage property. We design the brand, the marketing and the website for the people who do."], ["What does it cost?", "One-off projects start at $1,999 and monthly plans at $699; every price is in the pricing section. Anything beyond what a package lists is quoted as a fixed price before work starts, so there are no hourly surprises."], ["How does onboarding work?", "It is two short steps online: who you are, then what you need, with your budget and timeline. We reply by email, and a kickoff call comes next."], ["How long does a project take?", "It depends on scope. A personal brand kit is quick; a full firm identity with a website takes longer. You get a timeline in writing before we start, and we keep to it."], ["Can you work within my brokerage's brand rules?", "Yes. Most agent brands have to sit beside a brokerage logo and follow its guidelines. We design for that from the first sketch. Send us the rules when we start."], ["What do I receive at the end?", "All final files in print and screen formats, the editable source files, your brand guidelines, font licenses and the logins for anything we set up for you."], ["Can I mix services from different packages?", "Yes. During onboarding you can tick any of the seven services, whichever package you start from."], ["I'm a new agent. Is it too early for a brand?", "No. A clear personal brand helps most at the start, when you have fewer closed deals to point to. The personal brand kit is built for exactly this stage."], ["Do you build the website as well?", "Yes. We design it, show it to you as a live prototype, then build it with listings, lead capture and a CMS you can update yourself."], ["Who will I be working with?", "The designers you meet on the first call. Nothing is handed down to someone you have never spoken to."]];
+var FAQ=BBD.faq||[["Do you only work with real estate?", "Yes. Agents, teams, brokerages, developers and property managers. Working in one industry lets us start faster and get the details right, from signage sizes to brokerage co-branding rules."], ["Is BeBrand a real estate brokerage?", "No. BeBrand is a digital agency. We do not list, sell or manage property. We design the brand, the marketing and the website for the people who do."], ["What does it cost?", "One-off projects start at $1,999 and monthly plans at $699; every price is in the pricing section. Anything beyond what a package lists is quoted as a fixed price before work starts, so there are no hourly surprises."], ["How does onboarding work?", "It is two short steps online: who you are, then what you need, with your budget and timeline. We reply by email, and a kickoff call comes next."], ["How long does a project take?", "It depends on scope. A personal brand kit is quick; a full firm identity with a website takes longer. You get a timeline in writing before we start, and we keep to it."], ["Can you work within my brokerage's brand rules?", "Yes. Most agent brands have to sit beside a brokerage logo and follow its guidelines. We design for that from the first sketch. Send us the rules when we start."], ["What do I receive at the end?", "All final files in print and screen formats, the editable source files, your brand guidelines, font licenses and the logins for anything we set up for you."], ["Can I mix services from different packages?", "Yes. During onboarding you can tick any of the seven services, whichever package you start from."], ["I'm a new agent. Is it too early for a brand?", "No. A clear personal brand helps most at the start, when you have fewer closed deals to point to. The personal brand kit is built for exactly this stage."], ["Do you build the website as well?", "Yes. We design it, show it to you as a live prototype, then build it with listings, lead capture and a CMS you can update yourself."], ["Who will I be working with?", "The designers you meet on the first call. Nothing is handed down to someone you have never spoken to."]];
 $$('.fq-list').forEach(function(el){el.innerHTML=FAQ.map(function(f,i){return '<details class="fq"><summary><span class="fq-n">'+(i<9?'0':'')+(i+1)+'</span><span>'+f[0]+'</span><span class="fq-p"><svg aria-hidden="true"><use href="#i-plus"/></svg></span></summary><p class="fq-a">'+f[1]+'</p></details>'}).join('')});
 
 /* ---------- Reviews (placeholders until real client reviews, results and photos are supplied) ---------- */
@@ -437,7 +438,7 @@ $$('.fq-list').forEach(function(el){el.innerHTML=FAQ.map(function(f,i){return '<
    The picture area shows a plain person shape until each client's own photo is added; no stock faces stand in for clients.
    A review with v is a video review: v is the address of the client's video file (mp4 or webm), and '' keeps the slot as a video
    review until the file is added. p is an optional photo of the client, also shown as the still before a video plays. */
-var REVIEWS=[
+var REVIEWS=BBD.reviews||[
  {s:5,q:'A video review goes here. For the quote, use one line the client says in the video.',n:'Client name',r:'Agent, brokerage',c:'#FFC9DF',v:''},
  {s:5,q:'A written review goes here. A team or brokerage client works well in this slot.',n:'Client name',r:'Team lead, brokerage',c:'#CEC4F9'},
  {s:5,q:"A client's video review goes here, with one line from it in the client's own words.",n:'Client name',r:'Agent, brokerage',c:'#CFE4FB',v:''},
