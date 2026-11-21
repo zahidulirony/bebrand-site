@@ -334,14 +334,14 @@ $$('#why p').forEach(function(p){
 var how=$('#how'),steps=how?$$('.bb-step-card',how):[];
 if(how&&steps.length>1){
   var sgrid=steps[0].parentNode,bar=d.createElement('div'),si=0,stimer=0;
-  bar.className='bb-tabs';bar.setAttribute('role','tablist');bar.setAttribute('aria-label','Steps');
+  bar.className='bbx-tabs';bar.setAttribute('role','tablist');bar.setAttribute('aria-label','Steps');
   steps.forEach(function(c,i){
     var lab=$('.bb-label',c),name=(lab?lab.textContent:'Step '+(i+1)).split(/[\u00B7\u2022:\u2013\u2014]/).pop().trim(),b=d.createElement('button');
-    b.type='button';b.className='bb-tab';b.setAttribute('role','tab');b.innerHTML='<span class="bb-tab-n">'+(i+1)+'</span><span class="bb-tab-t"></span><i class="bb-tab-p"></i>';
-    b.querySelector('.bb-tab-t').textContent=name;b.addEventListener('click',function(){pick(i);clearInterval(stimer);stimer=-1;bar.classList.remove('bb-run')});
+    b.type='button';b.className='bbx-tab';b.setAttribute('role','tab');b.innerHTML='<span class="bbx-tab-n">'+(i+1)+'</span><span class="bbx-tab-t"></span><i class="bbx-tab-p"></i>';
+    b.querySelector('.bbx-tab-t').textContent=name;b.addEventListener('click',function(){pick(i);clearInterval(stimer);stimer=-1;bar.classList.remove('bb-run')});
     bar.appendChild(b);c.setAttribute('role','tabpanel');
   });
-  sgrid.parentNode.insertBefore(bar,sgrid);sgrid.classList.add('bb-steps');
+  sgrid.parentNode.insertBefore(bar,sgrid);sgrid.classList.add('bbx-steps');
   var stabs=[].slice.call(bar.children);
   var pick=function(i){si=i;steps.forEach(function(c,k){c.classList.toggle('bb-on',k===i)});stabs.forEach(function(t,k){t.classList.toggle('bb-on',k===i);t.setAttribute('aria-selected',k===i?'true':'false')})};
   pick(0);
@@ -388,7 +388,7 @@ if(!calm&&'IntersectionObserver' in window){
     var box=sec.children.length===1?sec.firstElementChild:sec;
     [].slice.call(box.children).forEach(function(c){
       if(c.id==='bb-nav'||c.id==='bb-ring'||c.classList.contains('sky')||c.classList.contains('bb-row')||c.classList.contains('bb-menu-btn'))return;
-      var cs=getComputedStyle(c),many=c.children.length>1&&c.id!=='bb-reviews'&&!c.classList.contains('bb-steps')&&!c.querySelector('#bb-ticker');
+      var cs=getComputedStyle(c),many=c.children.length>1&&c.id!=='bb-reviews'&&!c.classList.contains('bbx-steps')&&!c.querySelector('#bb-ticker');
       if(many&&(cs.display==='grid'||cs.display==='inline-grid'))[].slice.call(c.children).forEach(function(k,i){k.style.setProperty('--d',(i%4)*70+'ms');tg.push(k)});
       else tg.push(c);
     });
