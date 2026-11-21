@@ -348,6 +348,50 @@ if(how&&steps.length>1){
   if(!calm&&'IntersectionObserver' in window)new IntersectionObserver(function(en){var on=en[0].isIntersecting;if(on&&!stimer){bar.classList.add('bb-run');pick(si);stimer=setInterval(function(){if(!d.hidden)pick((si+1)%steps.length)},6000)}else if(!on&&stimer>0){clearInterval(stimer);stimer=0;bar.classList.remove('bb-run')}},{threshold:.3}).observe(how);
 }
 
+/* ---- pricing: the four tabs are driven by two switches in the banner (who it is for, one-off or monthly) ---- */
+var ptabs=$$('#pricing [role="tab"]'),ph=$('#pricing h2');
+if(ptabs.length===4&&ph){
+  var names=ptabs.map(function(t){return t.textContent.trim().split(/\s*:\s*/)}),cap=function(x){x=x||'';return x.charAt(0).toUpperCase()+x.slice(1)};
+  var who=0,bill=0,ctl=d.createElement('div');ctl.className='bbx-price';
+  ctl.innerHTML='<div class="bbx-seg" role="group" aria-label="Who it is for"><button type="button"></button><button type="button"></button></div><div class="bbx-bill" role="group" aria-label="One-off or monthly"><button type="button" class="bbx-bill-l"></button><button type="button" class="bbx-sw" role="switch" aria-label="Monthly pricing"><i></i></button><button type="button" class="bbx-bill-l"></button></div>';
+  var segB=$$('.bbx-seg button',ctl),billL=$$('.bbx-bill-l',ctl),sw=$('.bbx-sw',ctl);
+  segB[0].textContent='For '+(names[0][0]||'realtors').toLowerCase();segB[1].textContent='For '+(names[2][0]||'firms').toLowerCase();
+  billL[0].textContent=cap(names[0][1]||'one-off');billL[1].textContent=cap(names[1][1]||'monthly');
+  var setP=function(go){
+    segB.forEach(function(x,i){x.setAttribute('aria-pressed',i===who?'true':'false')});billL.forEach(function(x,i){x.setAttribute('aria-pressed',i===bill?'true':'false')});
+    sw.setAttribute('aria-checked',bill?'true':'false');if(go)ptabs[who*2+bill].click();
+  };
+  segB.forEach(function(x,i){x.addEventListener('click',function(){who=i;setP(1)})});billL.forEach(function(x,i){x.addEventListener('click',function(){bill=i;setP(1)})});
+  sw.addEventListener('click',function(){bill=bill?0:1;setP(1)});
+  ph.parentNode.appendChild(ctl);ptabs[0].parentNode.classList.add('bbx-hide');setP(0);
+}
+
+/* ---- start a project: the form is shown in two short steps (the fields stay Elementor's; the form sends as one) ---- */
+var sform=$('#start form');
+if(sform){
+  var fkids=[].slice.call(sform.children),ci=-1,sub=sform.querySelector('button[type="submit"]')||sform.querySelector('button');
+  fkids.forEach(function(c,i){var l=c.querySelector('label');if(ci<0&&l&&/what do you need|package|services/i.test(l.textContent))ci=i});
+  if(ci>1&&sub){
+    var subBox=sub;while(subBox.parentNode!==sform)subBox=subBox.parentNode;
+    var s1=fkids.slice(0,ci),s2=fkids.slice(ci),rail=d.createElement('ol'),next=d.createElement('button'),back=d.createElement('button');
+    rail.className='bbx-stepper';rail.innerHTML='<li><span>1</span>About you</li><li><span>2</span>Your needs</li>';
+    next.type='button';next.className=sub.className+' bbx-next';next.textContent='Continue';
+    back.type='button';back.className='bbx-back';back.textContent='Back';
+    sform.insertBefore(rail,sform.firstChild);sform.insertBefore(next,fkids[ci]);sform.insertBefore(back,subBox);
+    var stepTo=function(n){
+      s1.forEach(function(e){e.classList.toggle('bbx-off',n===2)});s2.forEach(function(e){e.classList.toggle('bbx-off',n===1)});
+      next.classList.toggle('bbx-off',n===2);back.classList.toggle('bbx-off',n===1);rail.children[0].classList.toggle('bb-on',n===1);rail.children[1].classList.toggle('bb-on',n===2);
+    };
+    next.addEventListener('click',function(){
+      var bad=null;s1.forEach(function(e){$$('input,select,textarea',e).forEach(function(f){if(!bad&&f.checkValidity&&!f.checkValidity())bad=f})});
+      if(bad){bad.reportValidity();return}
+      stepTo(2);var f=s2[0].querySelector('input,select,textarea');if(f)f.focus({preventScroll:true});
+    });
+    back.addEventListener('click',function(){stepTo(1)});
+    stepTo(1);
+  }
+}
+
 /* ---- book a call: the section opens as a window over the page from every "Book a call" link ---- */
 var call=$('#call');
 if(call){

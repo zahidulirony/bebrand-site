@@ -18,7 +18,8 @@
 
 /* the bar at the top follows the page; past the hero it gives way to the quick bar at the bottom */
 .bb-motion #bb-nav{position:fixed;top:10px;left:50%;z-index:60;width:min(1152px,calc(100% - 28px));transform:translateX(-50%);padding:8px 10px 8px 18px;border-radius:999px;transition:background-color .3s ease,box-shadow .3s ease,transform .38s ease}
-.bb-motion #top{padding-top:84px}
+.bb-motion #top{padding-top:44px}
+@media (max-width:767px){.bb-motion #top{padding-top:70px}#top{min-height:92svh!important}}
 .bb-scrolled #bb-nav{background-color:rgba(255,255,255,.9);-webkit-backdrop-filter:saturate(1.4) blur(14px);backdrop-filter:saturate(1.4) blur(14px);box-shadow:0 8px 30px rgba(16,20,24,.1)}
 .bb-scrolled #bb-nav nav{background-color:rgba(15,111,230,.07)}
 .bb-scrolled #bb-nav nav a{color:#101418}
@@ -49,16 +50,20 @@
 /* work photos: two rows that slide against each other as the page scrolls */
 #work.bb-rows{overflow:hidden}
 .bb-row{display:flex!important;width:max-content!important;max-width:none!important;gap:16px!important;margin-left:calc(50% - 50vw)!important;will-change:transform}
-.bb-row>*{flex:0 0 auto!important;width:clamp(230px,26vw,400px)!important;max-width:none!important}
+.bb-row>*{flex:0 0 auto!important;width:clamp(260px,31vw,446px)!important;max-width:none!important}
 
 /* reviews: three places, the middle one large; the cards move through them */
-#bb-reviews.bb-live{grid-template-columns:minmax(0,1fr) minmax(0,1.55fr) minmax(0,1fr)!important;align-items:center}
+#bb-reviews.bb-live{grid-template-columns:minmax(0,1fr) min(640px,56%) minmax(0,1fr)!important;align-items:center}
+#bb-reviews.bb-live>.bb-on{min-height:520px}
+#bb-reviews.bb-live>:not(.bb-on){min-height:360px;justify-content:flex-end}
+/* the place for a client photo or video: a tinted panel until an Image or Video element is put into the card */
+#bb-reviews.bb-live>.bb-on:not(:has(img,video))::before{content:"";flex:1 1 200px;min-height:200px;margin-bottom:8px;border-radius:18px;background:linear-gradient(150deg,#CFE4FB,#EAF3FE)}
 #bb-reviews.bb-live>*{display:none;cursor:pointer;opacity:.62}
 #bb-reviews.bb-live>.bb-prev{display:flex;order:1}
 #bb-reviews.bb-live>.bb-on{display:flex;order:2;opacity:1;cursor:default;box-shadow:0 26px 64px rgba(15,111,230,.16);padding:clamp(24px,3vw,40px)!important}
 #bb-reviews.bb-live>.bb-next{display:flex;order:3}
 #bb-reviews.bb-live>.bb-on p:nth-child(2){font-size:clamp(19px,1.7vw,24px);line-height:1.45}
-@media (max-width:767px){#bb-reviews.bb-live{grid-template-columns:1fr!important}#bb-reviews.bb-live>.bb-prev,#bb-reviews.bb-live>.bb-next{display:none}}
+@media (max-width:767px){#bb-reviews.bb-live>.bb-on{min-height:491px}#bb-reviews.bb-live{grid-template-columns:1fr!important}#bb-reviews.bb-live>.bb-prev,#bb-reviews.bb-live>.bb-next{display:none}}
 
 /* comparison table: Yes, Sometimes and No as marks */
 .bb-motion .bb-mark{display:flex;justify-content:center;align-items:center;font-size:0!important;line-height:0!important;color:transparent!important}
@@ -68,7 +73,7 @@
 .bb-mark-n::before{border:2px solid #CBD2DB}
 
 /* how it works: tabs over one card */
-.bbx-tabs{display:flex;justify-content:center;gap:6px;width:max-content;max-width:100%;margin:0 auto 22px;padding:6px;border-radius:999px;background:#F4F5F7}
+.bbx-tabs{display:flex;justify-content:center;gap:6px;width:max-content;max-width:100%;margin:0 auto -32px;padding:6px;border-radius:999px;background:#F4F5F7}
 .bbx-tab{position:relative;display:flex;align-items:center;gap:9px;overflow:hidden;border:0;border-radius:999px;padding:8px 18px 8px 8px;background:transparent;color:#454E5B;font:500 15px/1 "DM Sans",ui-sans-serif,system-ui,sans-serif;cursor:pointer;transition:background-color .25s ease,color .25s ease}
 .bbx-tab-n{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#fff;color:#101418;font-size:13px}
 .bbx-tab.bb-on{background:#0F6FE6;color:#fff}
@@ -115,3 +120,34 @@
 .bb-motion .bb-rv{opacity:0;transform:translateY(24px);transition:opacity .8s cubic-bezier(.2,.7,.2,1) var(--d,0ms),transform .8s cubic-bezier(.2,.7,.2,1) var(--d,0ms)}
 .bb-motion .bb-rv.bb-in{opacity:1;transform:none}
 @media (prefers-reduced-motion:reduce){#bb-ticker .bb-tk{animation:none}}
+
+/* ---- fit: sizes taken from the original site, where a moving part changes the size of its section ---- */
+@media (min-width:768px){.bbx-steps>.bb-step-card.bb-on{height:476px;min-height:0;padding-block:28px!important}.bbx-steps>.bb-step-card.bb-on .bb-step-pic{width:auto;max-width:100%;max-height:410px}}
+#why [data-e-type="e-grid"]>*{min-height:55px}
+#faqs details>summary{padding-top:12.5px;padding-bottom:12.5px}
+#faqs details{margin-bottom:8px}
+#faqs details:last-of-type{margin-bottom:0}
+@media (max-width:767px){#why [data-e-type="e-grid"]>*{min-height:71px}}
+
+/* pricing: the two switches in the banner */
+.bbx-hide{display:none!important}
+.bbx-off{display:none!important}
+.bbx-price{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px 24px;margin-top:10px}
+.bbx-seg{display:inline-flex;padding:4px;border-radius:999px;background:rgba(255,255,255,.18)}
+.bbx-seg button{border:0;border-radius:999px;padding:10px 18px;background:transparent;color:#fff;font:500 15px/1 "DM Sans",ui-sans-serif,system-ui,sans-serif;cursor:pointer;transition:background-color .2s ease,color .2s ease}
+.bbx-seg button[aria-pressed="true"]{background:#fff;color:#0F6FE6}
+.bbx-bill{display:inline-flex;align-items:center;gap:10px}
+.bbx-bill-l{border:0;padding:6px 2px;background:transparent;color:rgba(255,255,255,.7);font:500 15px/1 "DM Sans",ui-sans-serif,system-ui,sans-serif;cursor:pointer}
+.bbx-bill-l[aria-pressed="true"]{color:#fff}
+.bbx-sw{position:relative;flex:none;width:46px;height:26px;border:0;border-radius:999px;background:rgba(255,255,255,.3);cursor:pointer}
+.bbx-sw i{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+.bbx-sw[aria-checked="true"] i{transform:translateX(20px)}
+
+/* start a project: two steps */
+.bbx-stepper{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;width:100%;margin:0 0 4px;padding:0;list-style:none;color:#5B6472;font:500 14px/1 "DM Sans",ui-sans-serif,system-ui,sans-serif}
+.bbx-stepper li{display:flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;border-radius:999px;background:#F4F5F7}
+.bbx-stepper li span{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#fff;color:#101418;font-size:12px}
+.bbx-stepper li.bb-on{background:#0F6FE6;color:#fff}
+.bbx-stepper li.bb-on span{color:#0F6FE6}
+.bbx-next{grid-column:1/-1;justify-self:end;margin-left:auto;cursor:pointer}
+.bbx-back{grid-column:1/-1;justify-self:start;border:0;padding:10px 4px;background:transparent;color:#454E5B;font:500 15px/1 "DM Sans",ui-sans-serif,system-ui,sans-serif;text-decoration:underline;cursor:pointer}
