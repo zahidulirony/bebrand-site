@@ -154,3 +154,13 @@
 .bbx-stepper li.bb-on span{color:#0F6FE6}
 .bbx-next{grid-column:1/-1;justify-self:end;margin-left:auto;cursor:pointer}
 .bbx-back{grid-column:1/-1;justify-self:start;border:0;padding:10px 4px;background:transparent;color:#454E5B;font:500 15px/1 "DM Sans",ui-sans-serif,system-ui,sans-serif;text-decoration:underline;cursor:pointer}
+
+/* fit, third pass */
+@media (min-width:1025px){
+#services .bb-container>div:last-child{gap:16px}
+#services .bb-container>div:last-child>:is(:nth-child(1),:nth-child(2),:nth-child(6),:nth-child(7)) img{height:268px;object-fit:contain}
+#pricing [role="tabpanel"] :is(.bb-card,article){min-height:731px}
+#pricing .bbx-price{margin-top:-15px}
+}
+/* phones: all five columns of the comparison table fit the screen */
+@media (max-width:767px){#why [data-e-type="e-grid"]{grid-template-columns:minmax(0,1fr) repeat(4,46px)!important;width:100%!important;min-width:0!important}#why [data-e-type="e-grid"]>*{padding-inline:8px}}
