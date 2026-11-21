@@ -57,7 +57,7 @@
 #bb-reviews.bb-live>.bb-on{min-height:537px}
 #bb-reviews.bb-live>:not(.bb-on){min-height:360px;justify-content:flex-end}
 /* the place for a client photo or video: a tinted panel until an Image or Video element is put into the card */
-#bb-reviews.bb-live>.bb-on:not(:has(img,video))::before{content:"";flex:0 0 auto;height:clamp(200px,19vw,274px);margin-bottom:8px;border-radius:18px;background:linear-gradient(150deg,#CFE4FB,#EAF3FE)}
+#bb-reviews.bb-live>.bb-on:not(:has(img,video))::before{content:"";position:static;inset:auto;display:block;flex:0 0 auto;width:auto;height:clamp(200px,19vw,274px);margin-bottom:8px;border-radius:18px;opacity:1;transform:none;background:linear-gradient(150deg,#CFE4FB,#EAF3FE)}
 #bb-reviews.bb-live>*{display:none;cursor:pointer;opacity:.62}
 #bb-reviews.bb-live>.bb-prev{display:flex;order:1}
 #bb-reviews.bb-live>.bb-on{display:flex;order:2;opacity:1;cursor:default;box-shadow:0 26px 64px rgba(15,111,230,.16);padding:clamp(24px,3vw,40px)!important}
