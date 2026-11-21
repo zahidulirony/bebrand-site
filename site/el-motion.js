@@ -264,6 +264,16 @@ if(nav){
     root.classList.toggle('bb-scrolled',y>24);root.classList.toggle('bb-away',away);dock.classList.toggle('bb-show',away&&!end);
   };
   window.addEventListener('scroll',function(){if(!tick)tick=requestAnimationFrame(onScroll)},{passive:true});onScroll();
+  /* phones: a menu button in the bar opens the same links */
+  var mb=d.createElement('button'),mm=d.createElement('div');
+  mb.type='button';mb.className='bb-menu-btn';mb.setAttribute('aria-label','Menu');mb.setAttribute('aria-expanded','false');
+  mb.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 8h16M4 16h16"/></svg>';
+  mm.className='bb-menu';mm.innerHTML=dock.innerHTML;
+  nav.appendChild(mb);body.appendChild(mm);
+  var menu=function(on){root.classList.toggle('bb-menu-open',on);mb.setAttribute('aria-expanded',on?'true':'false')};
+  mb.addEventListener('click',function(){menu(!root.classList.contains('bb-menu-open'))});
+  mm.addEventListener('click',function(e){if(e.target.closest('a'))menu(false)});
+  d.addEventListener('keydown',function(e){if(e.key==='Escape')menu(false)});
 }
 
 /* ---- "We work with": one line of names separated by dots becomes a running list ---- */
@@ -298,11 +308,63 @@ if(rows.length&&work&&!calm){
   window.addEventListener('resize',measure);window.addEventListener('load',measure);measure();
 }
 
-/* ---- reviews step forward one after another ---- */
+/* ---- reviews: the cards take the middle place in turn (they stay Elementor cards; add or remove cards freely) ---- */
 var rv=$('#bb-reviews');
-if(rv&&!calm&&rv.children.length>1){
-  var cards=[].slice.call(rv.children),ri=0;rv.classList.add('bb-live');cards[0].classList.add('bb-on');
-  setInterval(function(){if(d.hidden||rv.matches(':hover'))return;cards[ri].classList.remove('bb-on');ri=(ri+1)%cards.length;cards[ri].classList.add('bb-on')},3600);
+if(rv&&rv.children.length>1){
+  var cards=[].slice.call(rv.children),ri=0,rtimer=0,M=cards.length;
+  var lay=function(){cards.forEach(function(c,k){var r=((k-ri)%M+M)%M;c.classList.toggle('bb-on',r===0);c.classList.toggle('bb-next',r===1&&M>1);c.classList.toggle('bb-prev',r===M-1&&M>2)})};
+  var turnTo=function(i){
+    var a=cards.map(function(c){return c.getBoundingClientRect()});ri=((i%M)+M)%M;lay();
+    if(calm)return;
+    cards.forEach(function(c,k){var b=c.getBoundingClientRect();if(!a[k].width||!b.width)return;c.style.transition='none';c.style.transformOrigin='0 0';c.style.transform='translate('+(a[k].left-b.left)+'px,'+(a[k].top-b.top)+'px) scale('+(a[k].width/b.width)+')'});
+    requestAnimationFrame(function(){requestAnimationFrame(function(){cards.forEach(function(c){c.style.transition='transform .75s cubic-bezier(.2,.7,.2,1),opacity .5s ease';c.style.transform=''})})});
+  };
+  rv.classList.add('bb-live');lay();
+  cards.forEach(function(c,k){c.addEventListener('click',function(){if(k!==ri){turnTo(k);clearInterval(rtimer);rtimer=-1}})});
+  if(!calm&&'IntersectionObserver' in window)new IntersectionObserver(function(en){var on=en[0].isIntersecting;if(on&&!rtimer)rtimer=setInterval(function(){if(!d.hidden&&!rv.matches(':hover'))turnTo(ri+1)},4200);else if(!on&&rtimer>0){clearInterval(rtimer);rtimer=0}},{threshold:.25}).observe(rv);
+}
+
+/* ---- comparison table: the words Yes, Sometimes and No are shown as marks ---- */
+$$('#why p').forEach(function(p){
+  var t=p.textContent.trim().toLowerCase(),k=t==='yes'?'y':t==='sometimes'?'h':t==='no'?'n':'';
+  if(k){p.setAttribute('role','img');p.setAttribute('aria-label',p.textContent.trim());p.classList.add('bb-mark','bb-mark-'+k)}
+});
+
+/* ---- how it works: the step cards become tabs with one card on show ---- */
+var how=$('#how'),steps=how?$$('.bb-step-card',how):[];
+if(how&&steps.length>1){
+  var sgrid=steps[0].parentNode,bar=d.createElement('div'),si=0,stimer=0;
+  bar.className='bb-tabs';bar.setAttribute('role','tablist');bar.setAttribute('aria-label','Steps');
+  steps.forEach(function(c,i){
+    var lab=$('.bb-label',c),name=(lab?lab.textContent:'Step '+(i+1)).split(/[\u00B7\u2022:\u2013\u2014]/).pop().trim(),b=d.createElement('button');
+    b.type='button';b.className='bb-tab';b.setAttribute('role','tab');b.innerHTML='<span class="bb-tab-n">'+(i+1)+'</span><span class="bb-tab-t"></span><i class="bb-tab-p"></i>';
+    b.querySelector('.bb-tab-t').textContent=name;b.addEventListener('click',function(){pick(i);clearInterval(stimer);stimer=-1;bar.classList.remove('bb-run')});
+    bar.appendChild(b);c.setAttribute('role','tabpanel');
+  });
+  sgrid.parentNode.insertBefore(bar,sgrid);sgrid.classList.add('bb-steps');
+  var stabs=[].slice.call(bar.children);
+  var pick=function(i){si=i;steps.forEach(function(c,k){c.classList.toggle('bb-on',k===i)});stabs.forEach(function(t,k){t.classList.toggle('bb-on',k===i);t.setAttribute('aria-selected',k===i?'true':'false')})};
+  pick(0);
+  if(!calm&&'IntersectionObserver' in window)new IntersectionObserver(function(en){var on=en[0].isIntersecting;if(on&&!stimer){bar.classList.add('bb-run');pick(si);stimer=setInterval(function(){if(!d.hidden)pick((si+1)%steps.length)},6000)}else if(!on&&stimer>0){clearInterval(stimer);stimer=0;bar.classList.remove('bb-run')}},{threshold:.3}).observe(how);
+}
+
+/* ---- book a call: the section opens as a window over the page from every "Book a call" link ---- */
+var call=$('#call');
+if(call){
+  var box=call.firstElementChild||call,x=d.createElement('button'),lastF=null;
+  x.type='button';x.className='bb-dlg-x';x.setAttribute('aria-label','Close');
+  x.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>';
+  box.appendChild(x);call.classList.add('bb-dlg');call.setAttribute('role','dialog');call.setAttribute('aria-modal','true');call.setAttribute('aria-label','Book a call');
+  var shut=function(){if(!root.classList.contains('bb-call-open'))return;root.classList.remove('bb-call-open');if(lastF&&lastF.focus)lastF.focus()};
+  var openCall=function(){lastF=d.activeElement;root.classList.add('bb-call-open');root.classList.remove('bb-menu-open');var f=call.querySelector('input,select,textarea');if(f)setTimeout(function(){f.focus()},80)};
+  d.addEventListener('click',function(e){
+    var a=e.target.closest?e.target.closest('a[href$="#call"]'):null;
+    if(a){e.preventDefault();openCall();return}
+    if(e.target===call||(e.target.closest&&e.target.closest('.bb-dlg-x')))shut();
+    else if(call.contains(e.target)&&e.target.closest('a[href^="#"]'))shut();
+  });
+  d.addEventListener('keydown',function(e){if(e.key==='Escape')shut()});
+  if(location.hash==='#call')openCall();
 }
 
 /* ---- closing: the work photos in an arch that drifts slowly ---- */
@@ -322,10 +384,11 @@ if(closing&&pics.length>3){
 if(!calm&&'IntersectionObserver' in window){
   var tg=[];
   $$('.elementor>*').forEach(function(sec){
+    if(sec.id==='call')return;
     var box=sec.children.length===1?sec.firstElementChild:sec;
     [].slice.call(box.children).forEach(function(c){
-      if(c.id==='bb-nav'||c.id==='bb-ring'||c.classList.contains('sky')||c.classList.contains('bb-row'))return;
-      var cs=getComputedStyle(c),many=c.children.length>1&&c.id!=='bb-reviews'&&!c.querySelector('#bb-ticker');
+      if(c.id==='bb-nav'||c.id==='bb-ring'||c.classList.contains('sky')||c.classList.contains('bb-row')||c.classList.contains('bb-menu-btn'))return;
+      var cs=getComputedStyle(c),many=c.children.length>1&&c.id!=='bb-reviews'&&!c.classList.contains('bb-steps')&&!c.querySelector('#bb-ticker');
       if(many&&(cs.display==='grid'||cs.display==='inline-grid'))[].slice.call(c.children).forEach(function(k,i){k.style.setProperty('--d',(i%4)*70+'ms');tg.push(k)});
       else tg.push(c);
     });
