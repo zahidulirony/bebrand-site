@@ -373,6 +373,48 @@ function bebrand_site_drop_elementor_assets() {
 add_action( 'wp_print_styles', 'bebrand_site_drop_elementor_assets', 100 );
 add_action( 'wp_print_footer_scripts', 'bebrand_site_drop_elementor_assets', 1 );
 
+/**
+ * Only the front page is the site. Another page with the same design (the block-built "Home" kept as a fallback, or this page
+ * before it is made the front page) is a copy: it is marked noindex and left out of WordPress's sitemap, so search engines see
+ * the site once.
+ */
+function bebrand_site_copy_robots( $robots ) {
+	if ( bebrand_is_landing() && ! is_front_page() ) {
+		$robots['noindex'] = true;
+		$robots['follow']  = true;
+		unset( $robots['max-image-preview'] );
+	}
+	return $robots;
+}
+add_filter( 'wp_robots', 'bebrand_site_copy_robots' );
+
+function bebrand_site_copy_sitemap( $args, $type ) {
+	if ( 'page' !== $type ) {
+		return $args;
+	}
+	$copies = get_posts(
+		array(
+			'post_type'      => 'page',
+			'post_status'    => 'publish',
+			'fields'         => 'ids',
+			'posts_per_page' => 50,
+			'meta_query'     => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- a handful of pages, asked for the sitemap only.
+				array(
+					'key'     => '_wp_page_template',
+					'value'   => array( BEBRAND_LANDING, BEBRAND_SITE_TEMPLATE ),
+					'compare' => 'IN',
+				),
+			),
+		)
+	);
+	$copies = array_diff( array_map( 'intval', $copies ), array( (int) get_option( 'page_on_front' ) ) );
+	if ( $copies ) {
+		$args['post__not_in'] = array_merge( isset( $args['post__not_in'] ) ? (array) $args['post__not_in'] : array(), $copies );
+	}
+	return $args;
+}
+add_filter( 'wp_sitemaps_posts_query_args', 'bebrand_site_copy_sitemap', 10, 2 );
+
 /** The whole document for a page that uses the template. */
 function bebrand_site_page_html( $post_id ) {
 	$dir  = get_template_directory() . '/site/';
